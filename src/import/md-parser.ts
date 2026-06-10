@@ -11,6 +11,8 @@ export interface Frontmatter {
   description?: string;
   tags?: string[];
   importance?: number;
+  /** entity name for "from-frontmatter" mappings (e.g. person name in per-person files) */
+  entity?: string;
 }
 
 export interface Section {

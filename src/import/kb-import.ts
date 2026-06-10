@@ -172,6 +172,12 @@ export function processFile(
     effectiveMapping.layer = parsed.frontmatter.layer as Layer;
   }
 
+  // Resolve "from-frontmatter" entity_name: `entity:` field, fallback to file stem
+  if (effectiveMapping.entity_name === "from-frontmatter") {
+    const fmEntity = typeof parsed.frontmatter.entity === "string" ? parsed.frontmatter.entity.trim() : "";
+    effectiveMapping.entity_name = fmEntity || basename(filePath, ".md");
+  }
+
   // Check if already imported with same hash
   if (!force && isAlreadyImported(db, sourcePath, parsed.hash)) {
     if (verbose) console.log(`  SKIP (unchanged): ${sourcePath}`);

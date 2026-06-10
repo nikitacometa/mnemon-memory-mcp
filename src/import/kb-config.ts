@@ -15,8 +15,9 @@ export interface FileMapping {
   importance: number;
   confidence: number;
   split: "whole" | "h2" | "h3";
-  /** entity_name to use; "from-heading" extracts from H2/H3 heading text */
-  entity_name?: string | "from-heading";
+  /** entity_name to use; "from-heading" extracts from H2/H3 heading text,
+   *  "from-frontmatter" reads `entity:` frontmatter field (fallback: file stem) */
+  entity_name?: string | "from-heading" | "from-frontmatter";
   scope?: string;
 }
 

@@ -263,4 +263,31 @@ Information about Alexey.`;
     // Should extract "Алексей" (before the —)
     expect(row.entity_name).toBe("Алексей");
   });
+
+  it("resolves from-frontmatter entity_name from entity field", () => {
+    const content = `---
+entity: Юля
+---
+## История
+Information about Yulya.`;
+
+    const path = writeFixture("people/yulya.md", content);
+    const mapping = { ...personMapping, entity_name: "from-frontmatter", split: "h2" as const };
+    processFile(db, path, mapping, tmpDir, false, false);
+
+    const row = db.prepare("SELECT entity_name FROM memories").get() as { entity_name: string };
+    expect(row.entity_name).toBe("Юля");
+  });
+
+  it("falls back to file stem when from-frontmatter has no entity field", () => {
+    const content = `## История
+Information about someone.`;
+
+    const path = writeFixture("people/sergey.md", content);
+    const mapping = { ...personMapping, entity_name: "from-frontmatter", split: "h2" as const };
+    processFile(db, path, mapping, tmpDir, false, false);
+
+    const row = db.prepare("SELECT entity_name FROM memories").get() as { entity_name: string };
+    expect(row.entity_name).toBe("sergey");
+  });
 });
