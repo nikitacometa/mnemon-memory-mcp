@@ -32,8 +32,13 @@ jobs:
             | python3 -c "
           import sys, json
           d = json.load(sys.stdin)
-          tools = [t['name'] for t in d['result']['tools']]
-          assert len(tools) == 7, f'Expected 7 tools, got {len(tools)}: {tools}'
+          tools = sorted(t['name'] for t in d['result']['tools'])
+          expected = sorted([
+              'memory_add', 'memory_search', 'memory_update', 'memory_delete',
+              'memory_inspect', 'memory_export', 'memory_health',
+              'memory_session_start', 'memory_session_end', 'memory_session_list',
+          ])
+          assert tools == expected, f'Tool list mismatch: {tools}'
           print(f'OK: {len(tools)} tools registered')
           "
 
