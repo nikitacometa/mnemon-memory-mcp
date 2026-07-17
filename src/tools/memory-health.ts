@@ -62,6 +62,15 @@ export function memoryHealth(
     )
     .all();
 
+  // Total expired — must match the cleanup predicate below (includes
+  // superseded chain links), unlike the display list above
+  const expiredTotal = db
+    .prepare<[], CountRow>(
+      `SELECT COUNT(*) AS count FROM memories
+       WHERE expires_at IS NOT NULL AND expires_at < ${now}`
+    )
+    .get()!.count;
+
   // Orphaned chains: supersedes points to a non-existent memory
   const orphaned = db
     .prepare<[], OrphanRow>(
@@ -99,20 +108,43 @@ export function memoryHealth(
          WHERE expires_at IS NOT NULL AND expires_at < ${now}`
       ).all();
 
-      for (const entry of expiredRows) {
-        if (entry.supersedes && entry.superseded_by) {
-          // Middle of chain (A→B→C, B expired): rewire A→C
-          db.prepare(`UPDATE memories SET superseded_by = ? WHERE id = ?`).run(entry.superseded_by, entry.supersedes);
-          db.prepare(`UPDATE memories SET supersedes = ? WHERE id = ?`).run(entry.supersedes, entry.superseded_by);
-        } else if (entry.supersedes) {
-          // Tail of chain: reactivate predecessor
-          db.prepare(`UPDATE memories SET superseded_by = NULL WHERE id = ?`).run(entry.supersedes);
-        } else if (entry.superseded_by) {
-          // Head of chain: clear successor's back-link
-          db.prepare(`UPDATE memories SET supersedes = NULL WHERE id = ?`).run(entry.superseded_by);
-        }
+      // When adjacent chain links expire together, a row's snapshotted
+      // pointers may reference other doomed rows — rewiring from the raw
+      // snapshot either hits an FK violation (pointer to an already-deleted
+      // row) or reactivates a predecessor mid-chain. Resolve each row's
+      // nearest SURVIVING neighbors first, rewire only survivors, then delete.
+      const doomed = new Map(expiredRows.map((r) => [r.id, r]));
 
-        db.prepare(`DELETE FROM memories WHERE id = ?`).run(entry.id);
+      const survivor = (
+        start: string | null,
+        next: (r: { supersedes: string | null; superseded_by: string | null }) => string | null
+      ): string | null => {
+        let cur = start;
+        const seen = new Set<string>();
+        while (cur !== null && doomed.has(cur)) {
+          if (seen.has(cur)) return null; // corrupted cycle among expired rows
+          seen.add(cur);
+          cur = next(doomed.get(cur)!);
+        }
+        return cur;
+      };
+
+      const setSupersedes = db.prepare(`UPDATE memories SET supersedes = ? WHERE id = ?`);
+      const setSupersededBy = db.prepare(`UPDATE memories SET superseded_by = ? WHERE id = ?`);
+
+      for (const entry of expiredRows) {
+        const pred = survivor(entry.supersedes, (r) => r.supersedes);
+        const succ = survivor(entry.superseded_by, (r) => r.superseded_by);
+
+        if (succ !== null) setSupersedes.run(pred, succ);
+        if (pred !== null) setSupersededBy.run(succ, pred);
+      }
+
+      // Survivors no longer reference doomed rows; remaining references
+      // between doomed rows are cleared by ON DELETE SET NULL
+      const deleteRow = db.prepare(`DELETE FROM memories WHERE id = ?`);
+      for (const entry of expiredRows) {
+        deleteRow.run(entry.id);
       }
 
       return expiredRows.length;
@@ -121,7 +153,7 @@ export function memoryHealth(
   }
 
   const issues: string[] = [];
-  if (expired.length > 0) issues.push(`${expired.length} expired entries need cleanup`);
+  if (expiredTotal > 0) issues.push(`${expiredTotal} expired entries need cleanup`);
   if (orphaned.length > 0) issues.push(`${orphaned.length} orphaned chain references`);
   if (staleCount > 0) issues.push(`${staleCount} stale memories (not accessed in 30+ days)`);
   if (lowConfidenceCount > 0) issues.push(`${lowConfidenceCount} low-confidence entries (<0.3)`);
@@ -137,6 +169,7 @@ export function memoryHealth(
       by_layer: Object.fromEntries(activeByLayer.map((r) => [r.layer, r.count])),
     },
     expired: expired.map((r) => ({ id: r.id, title: r.title, expires_at: r.expires_at })),
+    expired_count: expiredTotal,
     orphaned_chains: orphaned.map((r) => ({ id: r.id, missing_supersedes: r.supersedes })),
     stale_count: staleCount,
     low_confidence_count: lowConfidenceCount,

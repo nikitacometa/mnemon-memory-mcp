@@ -1254,6 +1254,63 @@ describe("memory_health", () => {
     expect(row).toBeUndefined();
   });
 
+  it("cleanup repairs the chain when adjacent links expire together", () => {
+    // A→B→C→D with B and C expired: survivors A and D must be linked directly
+    const a = memoryAdd(db, { content: "chain v1", layer: "semantic" });
+    const b = memoryUpdate(db, { id: a.id, supersede: true, new_content: "chain v2" });
+    const c = memoryUpdate(db, { id: b.new_id!, supersede: true, new_content: "chain v3" });
+    const d = memoryUpdate(db, { id: c.new_id!, supersede: true, new_content: "chain v4" });
+    db.prepare("UPDATE memories SET expires_at = datetime('now', '-1 day') WHERE id IN (?, ?)").run(b.new_id, c.new_id);
+
+    const result = memoryHealth(db, { cleanup: true });
+    expect(result.cleaned_expired).toBe(2);
+
+    const aRow = db.prepare("SELECT superseded_by FROM memories WHERE id = ?").get(a.id) as { superseded_by: string | null };
+    const dRow = db.prepare("SELECT supersedes, superseded_by FROM memories WHERE id = ?").get(d.new_id!) as { supersedes: string | null; superseded_by: string | null };
+    expect(aRow.superseded_by).toBe(d.new_id);
+    expect(dRow.supersedes).toBe(a.id);
+    expect(dRow.superseded_by).toBeNull();
+  });
+
+  it("cleanup deletes a fully expired chain without FK errors", () => {
+    const a = memoryAdd(db, { content: "doomed v1", layer: "semantic" });
+    const b = memoryUpdate(db, { id: a.id, supersede: true, new_content: "doomed v2" });
+    db.prepare("UPDATE memories SET expires_at = datetime('now', '-1 day') WHERE id IN (?, ?)").run(a.id, b.new_id);
+
+    const result = memoryHealth(db, { cleanup: true });
+    expect(result.cleaned_expired).toBe(2);
+    const remaining = db.prepare("SELECT COUNT(*) AS count FROM memories").get() as { count: number };
+    expect(remaining.count).toBe(0);
+  });
+
+  it("cleanup reactivates the nearest survivor when the chain tail expires", () => {
+    // A→B→C with B and C expired: A becomes active again
+    const a = memoryAdd(db, { content: "tail v1", layer: "semantic" });
+    const b = memoryUpdate(db, { id: a.id, supersede: true, new_content: "tail v2" });
+    const c = memoryUpdate(db, { id: b.new_id!, supersede: true, new_content: "tail v3" });
+    db.prepare("UPDATE memories SET expires_at = datetime('now', '-1 day') WHERE id IN (?, ?)").run(b.new_id, c.new_id);
+
+    const result = memoryHealth(db, { cleanup: true });
+    expect(result.cleaned_expired).toBe(2);
+    const aRow = db.prepare("SELECT superseded_by FROM memories WHERE id = ?").get(a.id) as { superseded_by: string | null };
+    expect(aRow.superseded_by).toBeNull();
+  });
+
+  it("expired_count matches the cleanup row set, including superseded links", () => {
+    // A→B with A superseded AND expired: display list hides it, count must not
+    const a = memoryAdd(db, { content: "count v1", layer: "semantic" });
+    memoryUpdate(db, { id: a.id, supersede: true, new_content: "count v2" });
+    db.prepare("UPDATE memories SET expires_at = datetime('now', '-1 day') WHERE id = ?").run(a.id);
+
+    const report = memoryHealth(db, {});
+    expect(report.expired_count).toBe(1);
+    expect(report.expired.length).toBe(0);
+    expect(report.issues.some((i) => i.includes("1 expired"))).toBe(true);
+
+    const result = memoryHealth(db, { cleanup: true });
+    expect(result.cleaned_expired).toBe(1);
+  });
+
   it("detects orphaned superseding chains", () => {
     const m = memoryAdd(db, { content: "orphan child", layer: "semantic" });
     // Disable FK checks to simulate orphaned data (e.g. manual DB edit)

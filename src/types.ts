@@ -223,6 +223,7 @@ export interface MemoryHealthOutput {
     by_layer: Record<string, number>;
   };
   expired: Array<{ id: string; title: string | null; expires_at: string }>;
+  expired_count: number;
   orphaned_chains: Array<{ id: string; missing_supersedes: string }>;
   stale_count: number;
   low_confidence_count: number;
