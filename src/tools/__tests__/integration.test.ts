@@ -15,7 +15,7 @@ import { memoryExport } from "../memory-export.js";
 import { memoryHealth } from "../memory-health.js";
 import { sessionStart, sessionEnd, sessionList } from "../session.js";
 import { stemText } from "../../stemmer.js";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1274,6 +1274,20 @@ describe("database file permissions", () => {
     if (process.platform !== "win32") {
       expect(statSync(join(dir, "store")).mode & 0o777).toBe(0o700);
       expect(statSync(dbPath).mode & 0o777).toBe(0o600);
+    }
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("does not change permissions of a pre-existing custom directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mnemon-custom-"));
+    chmodSync(dir, 0o755);
+
+    const pdb = openDatabase(join(dir, "custom.db"));
+    pdb.close();
+
+    if (process.platform !== "win32") {
+      expect(statSync(dir).mode & 0o777).toBe(0o755);
+      expect(statSync(join(dir, "custom.db")).mode & 0o777).toBe(0o600);
     }
     rmSync(dir, { recursive: true, force: true });
   });

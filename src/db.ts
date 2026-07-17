@@ -7,9 +7,9 @@
  */
 
 import Database from "better-sqlite3";
-import { chmodSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { stemText } from "./stemmer.js";
 
 const DB_DIR = join(homedir(), ".mnemon-mcp");
@@ -22,13 +22,18 @@ const DB_PATH = process.env["MNEMON_DB_PATH"] ?? join(DB_DIR, "memory.db");
 export function openDatabase(dbPath: string = DB_PATH): Database.Database {
   if (dbPath !== ":memory:") {
     const dir = join(dbPath, "..");
-    // mode is ignored for pre-existing dirs — chmod repairs installs created
-    // before this hardening (SECURITY.md promises user-only permissions)
+    const dirExisted = existsSync(dir);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    try {
-      chmodSync(dir, 0o700);
-    } catch (err) {
-      console.error(`[mnemon-mcp] Could not restrict db directory permissions: ${err instanceof Error ? err.message : String(err)}`);
+    // Restrict only directories we own: the default app dir (repairs installs
+    // created before this hardening) or one this call just created. Chmodding
+    // a pre-existing custom parent (e.g. cwd for a relative MNEMON_DB_PATH)
+    // could lock other users or services out of unrelated files
+    if (!dirExisted || resolve(dir) === resolve(DB_DIR)) {
+      try {
+        chmodSync(dir, 0o700);
+      } catch (err) {
+        console.error(`[mnemon-mcp] Could not restrict db directory permissions: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
