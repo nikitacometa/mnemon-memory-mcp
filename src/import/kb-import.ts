@@ -65,14 +65,19 @@ function resolveGlob(pattern: string, basePath: string): string[] {
   }
 }
 
-/** Check if file hash already exists in import_log (unchanged file) */
+/** Check if the file's MOST RECENT import used this hash (unchanged file).
+ *  Comparing against the full history would skip files reverted to earlier
+ *  content while the DB still holds memories from the newer version. */
 function isAlreadyImported(db: Database.Database, sourcePath: string, hash: string): boolean {
   const row = db
-    .prepare<[string, string], { id: string }>(
-      `SELECT id FROM import_log WHERE source_path = ? AND file_hash = ?`
+    .prepare<[string], { file_hash: string | null }>(
+      `SELECT file_hash FROM import_log
+       WHERE source_path = ?
+       ORDER BY imported_at DESC, rowid DESC
+       LIMIT 1`
     )
-    .get(sourcePath, hash);
-  return row !== undefined;
+    .get(sourcePath);
+  return row !== undefined && row.file_hash === hash;
 }
 
 /** Log import to import_log table */

@@ -158,6 +158,24 @@ describe("processFile — hash dedup", () => {
     expect(second.status).not.toBe("skipped");
     expect(second.created).toBe(1);
   });
+
+  it("re-imports a file reverted to earlier content", () => {
+    const path = writeFixture("notes/revert.md", "Version 1 original");
+    processFile(db, path, wholeMapping, tmpDir, false, false);
+
+    writeFileSync(path, "Version 2 edited", "utf8");
+    processFile(db, path, wholeMapping, tmpDir, false, false);
+
+    // Revert byte-for-byte to the original content — its hash exists in
+    // import_log history, but only the LATEST import counts as current
+    writeFileSync(path, "Version 1 original", "utf8");
+    const third = processFile(db, path, wholeMapping, tmpDir, false, false);
+
+    expect(third.status).not.toBe("skipped");
+    const active = db.prepare("SELECT content FROM memories WHERE superseded_by IS NULL").all() as Array<{ content: string }>;
+    expect(active.some((r) => r.content.includes("Version 1 original"))).toBe(true);
+    expect(active.some((r) => r.content.includes("Version 2 edited"))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
