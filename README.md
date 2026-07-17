@@ -1,6 +1,6 @@
 # mnemon-mcp
 
-[![CI](https://github.com/nikitacometa/mnemon-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/nikitacometa/mnemon-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/nikitacometa/mnemon-memory-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/nikitacometa/mnemon-memory-mcp/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/mnemon-mcp)](https://www.npmjs.com/package/mnemon-mcp)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -8,7 +8,7 @@
 **Persistent layered memory for AI agents.**
 Local-first. Zero-cloud. Single SQLite file.
 
-[Landing Page](https://aisatisfy.me/mnemon/) · [npm](https://www.npmjs.com/package/mnemon-mcp) · [GitHub](https://github.com/nikitacometa/mnemon-mcp)
+[Landing Page](https://aisatisfy.me/mnemon/) · [npm](https://www.npmjs.com/package/mnemon-mcp) · [GitHub](https://github.com/nikitacometa/mnemon-memory-mcp)
 
 Your AI agent forgets everything after each session. Mnemon fixes that.
 
@@ -46,8 +46,8 @@ npm install -g mnemon-mcp
 Or from source:
 
 ```bash
-git clone https://github.com/nikitacometa/mnemon-mcp.git
-cd mnemon-mcp && npm install && npm run build
+git clone https://github.com/nikitacometa/mnemon-memory-mcp.git
+cd mnemon-memory-mcp && npm install && npm run build
 ```
 
 ### Configure Your MCP Client

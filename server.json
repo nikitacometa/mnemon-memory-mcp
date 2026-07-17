@@ -3,15 +3,15 @@
   "name": "io.github.nikitacometa/mnemon-mcp",
   "description": "Persistent layered memory for AI agents. SQLite FTS5, fact versioning, zero-cloud.",
   "repository": {
-    "url": "https://github.com/nikitacometa/mnemon-mcp",
+    "url": "https://github.com/nikitacometa/mnemon-memory-mcp",
     "source": "github"
   },
-  "version": "1.1.0",
+  "version": "1.3.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mnemon-mcp",
-      "version": "1.1.0",
+      "version": "1.3.0",
       "transport": {
         "type": "stdio"
       },

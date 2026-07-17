@@ -10,7 +10,7 @@
 
 **Do not open a public issue for security vulnerabilities.**
 
-Report security issues via [GitHub Security Advisories](https://github.com/nikitacometa/mnemon-mcp/security/advisories/new).
+Report security issues via [GitHub Security Advisories](https://github.com/nikitacometa/mnemon-memory-mcp/security/advisories/new).
 
 Expected response time: 48 hours for acknowledgment, 7 days for initial assessment.
 

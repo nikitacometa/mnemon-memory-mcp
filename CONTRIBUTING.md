@@ -9,8 +9,8 @@ PRs adding telemetry, analytics, or any external network call will be rejected w
 ## Development Setup
 
 ```bash
-git clone https://github.com/nikitacometa/mnemon-mcp.git
-cd mnemon-mcp
+git clone https://github.com/nikitacometa/mnemon-memory-mcp.git
+cd mnemon-memory-mcp
 npm install
 npm run build
 npm test

@@ -57,11 +57,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/nikitacometa/mnemon-mcp.git"
+    "url": "https://github.com/nikitacometa/mnemon-memory-mcp.git"
   },
   "homepage": "https://aisatisfy.me/mnemon/",
   "bugs": {
-    "url": "https://github.com/nikitacometa/mnemon-mcp/issues"
+    "url": "https://github.com/nikitacometa/mnemon-memory-mcp/issues"
   },
   "types": "dist/index.d.ts",
   "author": "Nikita Gorokhov (https://github.com/nikitacometa)",
