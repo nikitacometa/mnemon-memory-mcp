@@ -158,15 +158,40 @@ it scans. Both are worth knowing before optimizing the wrong thing.
 
 Tracked honestly rather than hidden; several have open backlog entries:
 
-1. **Vector candidate pool** — KNN fetches `min(limit×3, 200)` global
-   neighbors *before* layer/scope filters; a heavily filtered query can
-   miss scoped hits. Fix direction: filter pushdown or iterative K widening.
-2. **Import reconciliation** — duplicate headings within one file collide;
+1. **Import reconciliation** — duplicate headings within one file collide;
    sections removed from a file stay active until superseded by other means.
-3. **Single-writer assumption** — chain rewiring invariants are transaction-
+2. **Single-writer assumption** — chain rewiring invariants are transaction-
    safe within a process, not defended across concurrent writer processes
    (ADR-0003).
-4. **Embedding lifecycle** — the vec table has no model/dimension metadata
-   guard; switching embedding models requires a manual re-backfill.
-5. **Hybrid soft regressions** — 2 golden-set cases where vector noise
+3. **Hybrid soft regressions** — 2 golden-set cases where vector noise
    dilutes a strong lexical match through RRF (EVALUATION.md).
+4. **Deletion is not a secure erase** — `event_log` retains prior content by
+   design (audit trail); see SECURITY.md.
+
+### Vector candidate pool — why KNN widens
+
+sqlite-vec's `vec0` KNN takes `k` and returns the k globally nearest rows;
+it cannot filter on columns joined from `memories`. So filters
+(layer/entity/scope/dates/confidence) apply *after* the scan, and a fixed `k`
+silently loses matches that sit outside the global top-k — a scoped query over
+a large corpus could return nothing while matching memories existed.
+
+`vectorSearch` therefore widens the pool (`k = limit×3`, ×4 per round, capped
+at `min(vecCount, 2000)`) until enough survivors are found or the index is
+exhausted. Exhaustion is decided by the cap alone, deliberately: `knnSearch`
+drops superseded rows *after* `vec0` applies `k`, so a short result set means
+"the neighbors were superseded", not "the index is spent" — treating it as
+exhaustion reintroduced the false negatives on exactly this project's headline
+feature. The query is embedded once, before the loop.
+
+### Embedding index lifecycle
+
+`vector_index_meta` (migration v8) pins the provider/model/dimensions that
+populated the vector index. Vectors from two embedding spaces in one index
+make cosine distance meaningless *with no error to show for it*, so a
+mismatch marks vector search unavailable with a reason and leaves FTS serving.
+An empty index adopts the new space instead (nothing to corrupt), and a
+dimension change rebuilds the table. Databases predating the metadata table
+recover provenance from the per-row `embedding_model` tags rather than
+trusting the current config — otherwise a model switch made during an upgrade
+would be silently blessed.

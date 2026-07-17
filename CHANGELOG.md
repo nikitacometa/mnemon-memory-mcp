@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `from-frontmatter` entity_name resolution — per-entity KB files declare `entity:` in frontmatter
 - `expired_count` in `memory_health` report — total expired rows matching the cleanup predicate
 - `MNEMON_HOST` variable for the HTTP transport bind address
+- **Vector index provenance** (`vector_index_meta`, migration v8) — pins the provider/model/dimensions behind the index. A model switch on a populated index disables vector search with an explanation instead of silently mixing embedding spaces; FTS keeps serving. Empty indexes adopt the new model, and pre-v8 databases recover provenance from per-row `embedding_model` tags
+- ESLint flat config, `npm run lint`, and a CI matrix over Node 20 and 22
 - Published engineering docs: [ARCHITECTURE](docs/ARCHITECTURE.md), four [ADRs](docs/adr/), [EVALUATION](docs/EVALUATION.md) (retrieval methodology + measured results), [COMPETITORS](docs/COMPETITORS.md)
 - `Retrieval Quality` section in README with measured golden-set numbers and an architecture diagram
 
@@ -18,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTTP transport binds to `127.0.0.1` by default; non-loopback binds require `MNEMON_AUTH_TOKEN` or an explicit `MNEMON_ALLOW_INSECURE_HTTP=1` opt-in
 - CORS is now opt-in via `MNEMON_CORS_ORIGIN` (previously defaulted to `*`)
 - Database directory and files are created with user-only permissions (0700/0600) and repaired on startup for existing installs
+- `SECURITY.md` documents what deletion does and does not guarantee (`event_log` retains prior content by design)
 
 ### Fixed
 - BM25 field weights were silently shifted onto the wrong columns by the unindexed `id` column — actual weighting was title=1/content=2 instead of the documented title=3/content=1/entity=2
@@ -27,7 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expired-entry cleanup crashed with an FK violation (rolling back the whole cleanup) when adjacent supersede-chain links expired together
 - Calendar validation rejects impossible dates (e.g. February 31) instead of silently normalizing them
 - Incremental KB import compares only the latest import per file, so files reverted to earlier content re-import correctly
-- Ranking fixes measured on the 50-case golden set (797-memory corpus): hybrid L2 score 90.3 → 91.8, FTS-only 87.8 → 88.9
+- **Vector search false negatives on filtered queries** — the KNN pool was capped at `min(limit×3, 200)` global neighbors *before* filters applied, so a scoped match outside that window returned nothing. The pool now widens until enough survivors are found or the index is exhausted
+- Live `memory_add`/`memory_update` embedding now records `embedding_model` in the same transaction as the vector (previously only the backfill CLI tagged rows)
+- Impossible calendar dates ("31 февраля 2025") fall back to month-level extraction instead of disabling date extraction entirely and leaking the date tokens into FTS matching
+- Ranking fixes measured on the 50-case golden set (797-memory corpus): hybrid L2 score 90.3 → 91.7, FTS-only 87.8 → 88.9
 
 ## [1.3.0] - 2026-03-18
 
