@@ -5,5 +5,12 @@ dist/
 .env.*
 stderr.log
 test_smoke.py
-docs/
+tmp/
+
+# internal working drafts — published docs live in docs/ (ARCHITECTURE, ADRs, EVALUATION, COMPETITORS)
+docs/ULTIMATE-GUIDE.md
+docs/IMPROVEMENT-PLAN.md
+docs/landing-page-spec.md
+docs/release-plan-*.md
+
 .mcpregistry_*

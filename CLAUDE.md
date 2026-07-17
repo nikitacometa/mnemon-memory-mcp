@@ -17,7 +17,7 @@ Task board shared with KB: `~/dev/mnemon/mnemon-kb/tasks/BOARD.md` (T-NNN IDs).
 npm run build      # compile TypeScript → dist/
 npm run dev        # run via tsx (no build needed)
 npm start          # run compiled dist/index.js (blocks on stdio — see Smoke Test)
-npm test           # vitest (231 tests: 23 md-parser + 15 kb-import + 27 date-extractor + 125 integration + 41 validation)
+npm test           # vitest (272 tests: 23 md-parser + 16 kb-import + 28 date-extractor + 48 validation + 133 integration + 8 embedder + 6 MCP dispatch + 5 http + 5 hybrid RRF)
 npm run import:kb  # import mnemon-kb markdown → SQLite (skip unchanged)
 ```
 
@@ -149,8 +149,8 @@ In `~/.claude/mcp.json`:
 ## Known Issues
 
 1. **Russian morphology** — Snowball stemmer fully integrated at index and query time with bilingual month expansion (EN↔RU). Edge cases with irregular forms may still miss.
-2. **L2 retrieval (MCP hybrid) = 92.6/100** — Recall@5=0.931, MRR=0.888, nDCG@5=0.876. FTS-only=87.8. Up from 36.9 baseline
-3. **231 tests** — 23 md-parser + 15 kb-import + 27 date-extractor + 125 integration + 41 validation
+2. **L2 retrieval (MCP hybrid) = 91.8/100** (2026-07-17, 797-memory corpus) — Recall@5=0.919, MRR=0.882, nDCG@5=0.867. FTS-only=88.9. Up from 36.9 baseline. History and methodology: `docs/EVALUATION.md`
+3. **272 tests** — incl. MCP dispatch layer (InMemoryTransport), HTTP transport factory, hybrid RRF positive-path
 4. **Hybrid soft regressions** — FAC-002, XRF-001 regress in hybrid vs FTS (vector noise dilutes strong FTS signal via RRF). Overall hybrid still +4.8 over FTS
 5. **No cycle protection** in superseding chains
 

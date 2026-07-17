@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `from-frontmatter` entity_name resolution — per-entity KB files declare `entity:` in frontmatter
 - `expired_count` in `memory_health` report — total expired rows matching the cleanup predicate
 - `MNEMON_HOST` variable for the HTTP transport bind address
+- Published engineering docs: [ARCHITECTURE](docs/ARCHITECTURE.md), four [ADRs](docs/adr/), [EVALUATION](docs/EVALUATION.md) (retrieval methodology + measured results), [COMPETITORS](docs/COMPETITORS.md)
+- `Retrieval Quality` section in README with measured golden-set numbers and an architecture diagram
 
 ### Security
 - HTTP transport binds to `127.0.0.1` by default; non-loopback binds require `MNEMON_AUTH_TOKEN` or an explicit `MNEMON_ALLOW_INSECURE_HTTP=1` opt-in
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expired-entry cleanup crashed with an FK violation (rolling back the whole cleanup) when adjacent supersede-chain links expired together
 - Calendar validation rejects impossible dates (e.g. February 31) instead of silently normalizing them
 - Incremental KB import compares only the latest import per file, so files reverted to earlier content re-import correctly
+- Ranking fixes measured on the 50-case golden set (797-memory corpus): hybrid L2 score 90.3 → 91.8, FTS-only 87.8 → 88.9
 
 ## [1.3.0] - 2026-03-18
 

@@ -35,6 +35,25 @@ Mnemon organizes memories into **four layers**:
 
 A journal entry from last Tuesday and a coding rule that never changes live in different layers — because they should.
 
+## Retrieval Quality
+
+Retrieval is measured against a 50-case golden set on a real 797-memory
+bilingual (RU/EN) corpus, through the actual MCP server — not a
+reimplementation. Current numbers ([methodology & history](docs/EVALUATION.md)):
+
+| Metric | FTS-only | Hybrid (FTS5 + vector, RRF) |
+|--------|---------:|---------------------------:|
+| Composite score | 88.9 | **91.8** |
+| Recall@5 | 0.907 | **0.919** |
+| MRR | 0.817 | **0.882** |
+| nDCG@5 | 0.816 | **0.867** |
+| Negative precision | 1.000 | 1.000 |
+
+The eval doc also tracks the failures: score drift under corpus growth, the
+BM25 field-weight bug the eval caught, and the two cases where hybrid fusion
+still loses to pure lexical search. Numbers you can't audit are marketing;
+[read how these are produced](docs/EVALUATION.md).
+
 ## Quick Start
 
 ### Install
@@ -182,6 +201,26 @@ Four modes, all supporting layer / entity / scope / date / confidence filters:
 Scores: `bm25 × (0.3 + 0.7 × importance) × decay(layer) × recency`
 
 Recency boost: `1 / (1 + daysSince / 365)` — gently rewards recently created memories without penalizing old ones.
+
+### Architecture
+
+```mermaid
+flowchart LR
+    C["MCP client<br/>Claude Code · Cursor · …"] -- "stdio / HTTP" --> T["10 tools · 4 resources · 3 prompts"]
+    T --> R["retrieval pipeline<br/>FTS5 · vector · RRF fusion"]
+    T --> M["memories + supersede chains"]
+    I["KB import pipeline<br/>markdown → memories"] --> M
+    M -- triggers --> F["FTS5 index (stemmed EN+RU)"]
+    R --> F
+    R --> V["sqlite-vec (optional, BYOK)"]
+```
+
+The full picture — module boundaries, write/read paths, invariants, known
+limitations — is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Design
+decisions are recorded as ADRs: [SQLite+FTS5 core](docs/adr/0001-sqlite-fts5-over-vector-db.md),
+[hybrid RRF retrieval](docs/adr/0002-hybrid-retrieval-rrf.md),
+[synchronous driver](docs/adr/0003-synchronous-better-sqlite3.md),
+[layered memory model](docs/adr/0004-layered-memory-model.md).
 
 ### Stemming
 
@@ -463,12 +502,14 @@ Returns: array of sessions with `id`, `client`, `project`, `started_at`, `ended_
 | **Setup** | `npm install -g` | Docker + API keys | pip + deps | Go install | Built-in |
 | **License** | MIT | Apache 2.0 | AGPL | MIT | MIT |
 
+Extended competitive analysis with sources: [docs/COMPETITORS.md](docs/COMPETITORS.md).
+
 ## Development
 
 ```bash
 npm run dev        # run via tsx (no build step)
 npm run build      # TypeScript → dist/
-npm test           # vitest (229 tests)
+npm test           # vitest (272 tests: unit + integration + MCP dispatch + HTTP transport + hybrid RRF)
 npm run bench      # performance benchmarks
 npm run db:backup  # backup database
 ```
