@@ -94,6 +94,9 @@ describe("MemoryAddSchema", () => {
     ["2025-04-31", false],
     ["2024-02-29", true],
     ["2025-02-29", false],
+    ["2000-02-29", true],
+    ["1900-02-29", false],
+    ["0050-01-15", true],
   ] as const)("validates calendar date %s", (event_at, expected) => {
     const result = MemoryAddSchema.safeParse({ content: "valid", layer: "episodic", event_at });
     expect(result.success).toBe(expected);

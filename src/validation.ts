@@ -13,15 +13,16 @@ const EntityType = z.enum(["user", "project", "person", "concept", "file", "rule
 const SearchMode = z.enum(["fts", "exact", "vector", "hybrid"]);
 const ExportFormat = z.enum(["json", "markdown", "claude-md"]);
 
+// Explicit day-in-month check: Date.UTC would misvalidate years 0000-0099
+// (legacy two-digit-year offset) and silently normalize overflow days
 function hasValidCalendarDate(value: string): boolean {
   const year = Number(value.slice(0, 4));
   const month = Number(value.slice(5, 7));
   const day = Number(value.slice(8, 10));
-  const date = new Date(Date.UTC(year, month - 1, day));
-
-  return date.getUTCFullYear() === year
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day;
+  if (month < 1 || month > 12 || day < 1) return false;
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1]!;
 }
 
 const isoDatePrefix = z.string().regex(
