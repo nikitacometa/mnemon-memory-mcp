@@ -68,7 +68,7 @@ That is why FTS remains the zero-config default.
 |------|-------:|-------------:|--------------|
 | 2026-03-10 | ~270 | 36.9 (FTS) | baseline; 21/50 cases blocked by import scope |
 | 2026-03-17 | ~550 | 92.6 | import scope widened; hybrid RRF landed; BM25 inversion fix (+9 pts) |
-| 2026-06-10 | 797 | 90.3 | corpus +42% after bulk imports — recency boost flooded top-K (tracked as T-107) |
+| 2026-06-10 | 797 | 90.3 | corpus +42% after bulk imports — recency boost flooded top-K (open bug, see below) |
 | 2026-07-17 | 797 | **91.7** | ranking fixes: BM25 field-weight shift, double importance boost, date-query routing |
 
 Two lessons the history taught us:
@@ -84,9 +84,19 @@ Two lessons the history taught us:
 
 ## Known failures
 
-- **FAC-011** (all modes): an aggregation question ("how many books …") —
-  the answer is not localized in any single memory, so top-K retrieval
-  cannot satisfy it. Needs consolidation/aggregation, not better ranking.
+- **FAC-011** (all modes): a lookup labeled *easy* — "how many books has N
+  read, and how many have personal notes" — whose answer sits in one file's
+  frontmatter. It scored recall 1.0 until the corpus grew ~40%, then dropped
+  to 0.0. This is not a hard-query problem, it is the recency bug below
+  eating a weak-match query. It stays on the failure list until that fix
+  lands, precisely because a plausible "top-K can't do aggregation" excuse
+  would have retired a real, tracked defect.
+- **Recency boost keys off the wrong timestamp** (open, and the cause of the
+  92.6 → 90.3 drop above). It ranks by `created_at`, which is the row's
+  insert time — so a bulk re-import makes the entire corpus look brand new at
+  once and floods weak-match queries. The fix is to rank by when the thing
+  *happened* (`event_at`, or the source file's modification time), not when
+  the row was written. Not yet done; the golden set will be re-run against it.
 - **2 hybrid soft regressions** (XRF family): when a lexical match is very
   strong, vector neighbors dilute it through RRF and demote the correct hit
   by a few positions. Net hybrid effect stays positive; candidates for
