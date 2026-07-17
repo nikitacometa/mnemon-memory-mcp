@@ -6,6 +6,7 @@ import type { Embedder } from "../../embedder.js";
 import { createVecTable, loadSqliteVec, upsertVec } from "../../vector.js";
 import { memoryAdd } from "../memory-add.js";
 import { memorySearch } from "../memory-search.js";
+import { memoryUpdate } from "../memory-update.js";
 
 const DIMENSIONS = 4;
 
@@ -40,7 +41,8 @@ describe.skipIf(!sqliteVecAvailable)("hybrid and vector search", () => {
   beforeEach(() => {
     db = openDatabase(":memory:");
     expect(loadSqliteVec(db)).toBe(true);
-    createVecTable(db, DIMENSIONS);
+    const embedder = createStubEmbedder();
+    createVecTable(db, embedder.dimensions, embedder);
   });
 
   afterEach(() => {
@@ -194,5 +196,103 @@ describe.skipIf(!sqliteVecAvailable)("hybrid and vector search", () => {
       near.id,
       far.id,
     ]);
+  });
+
+  it("expands the global KNN pool until a filtered farthest match is found", async () => {
+    for (let i = 0; i < 59; i++) {
+      const distractor = memoryAdd(db, {
+        content: `distractor ${i}`,
+        layer: "semantic",
+        entity_type: "project",
+        entity_name: "Distractor",
+        importance: 1,
+      });
+      upsertVec(db, distractor.id, vector(1, i / 1000));
+    }
+    const target = memoryAdd(db, {
+      content: "only target",
+      layer: "semantic",
+      entity_type: "project",
+      entity_name: "Target",
+      importance: 1,
+    });
+    upsertVec(db, target.id, vector(-1, 0));
+
+    const result = await memorySearch(
+      db,
+      {
+        query: "find target",
+        mode: "vector",
+        entity_name: "Target",
+        limit: 1,
+      },
+      createStubEmbedder()
+    );
+
+    expect(result.memories.map((memory) => memory.id)).toEqual([target.id]);
+  });
+
+  it("keeps expanding when superseded neighbors shrink the KNN result set", async () => {
+    // knnSearch drops superseded rows AFTER vec0 applies `k`, so a pool full
+    // of superseded neighbors returns few rows without the index being spent.
+    // Treating that as exhaustion loses matches that lie further out.
+    const stale: string[] = [];
+    for (let i = 0; i < 59; i++) {
+      const distractor = memoryAdd(db, {
+        content: `distractor ${i}`,
+        layer: "semantic",
+        entity_type: "project",
+        entity_name: "Distractor",
+        importance: 1,
+      });
+      upsertVec(db, distractor.id, vector(1, i / 1000));
+      stale.push(distractor.id);
+    }
+    const target = memoryAdd(db, {
+      content: "only target",
+      layer: "semantic",
+      entity_type: "project",
+      entity_name: "Target",
+      importance: 1,
+    });
+    upsertVec(db, target.id, vector(-1, 0));
+
+    // Supersede the neighbors closest to the query vector
+    for (const id of stale.slice(0, 10)) {
+      memoryUpdate(db, { id, supersede: true, new_content: "superseded distractor" });
+    }
+
+    const result = await memorySearch(
+      db,
+      { query: "find target", mode: "vector", entity_name: "Target", limit: 1 },
+      createStubEmbedder()
+    );
+
+    expect(result.memories.map((memory) => memory.id)).toEqual([target.id]);
+  });
+
+  it("returns an empty vector result when no memory matches the filter", async () => {
+    for (let i = 0; i < 12; i++) {
+      const memory = memoryAdd(db, {
+        content: `available ${i}`,
+        layer: "semantic",
+        entity_name: "Available",
+      });
+      upsertVec(db, memory.id, vector(1, i / 100));
+    }
+
+    const result = await memorySearch(
+      db,
+      {
+        query: "missing",
+        mode: "vector",
+        entity_name: "Missing",
+        limit: 1,
+      },
+      createStubEmbedder()
+    );
+
+    expect(result.memories).toEqual([]);
+    expect(result.returned_count).toBe(0);
   });
 });

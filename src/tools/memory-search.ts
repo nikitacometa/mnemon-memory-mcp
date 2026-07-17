@@ -21,11 +21,19 @@ import type {
 import type { Embedder } from "../embedder.js";
 import { isStopWord } from "../stop-words.js";
 import { stemWord } from "../stemmer.js";
-import { knnSearch, isVecLoaded } from "../vector.js";
+import {
+  getVecUnavailableReason,
+  isVecLoaded,
+  knnSearch,
+  vecCount,
+} from "../vector.js";
 import { extractDatesFromQuery } from "../date-extractor.js";
 
 const DEFAULT_LIMIT = 10;
 const SNIPPET_TOKENS = 64;
+const VECTOR_KNN_INITIAL_MULTIPLIER = 3;
+const VECTOR_KNN_EXPANSION_FACTOR = 4;
+const VECTOR_KNN_MAX = 2000;
 
 /** Resolve entity alias to canonical name. Returns the input if no alias exists. */
 function resolveEntityName(db: Database.Database, name: string): string {
@@ -279,6 +287,10 @@ export async function memorySearch(
       throw new Error("Vector search requires an embedding provider. Set MNEMON_EMBEDDING_PROVIDER env var.");
     }
     if (!isVecLoaded()) {
+      const reason = getVecUnavailableReason();
+      if (reason) {
+        throw new Error(`Vector search unavailable: ${reason}`);
+      }
       throw new Error("Vector search requires sqlite-vec. Install: npm install sqlite-vec");
     }
     ids = await vectorSearch(db, input, embedder, fetchLimit);
@@ -287,6 +299,10 @@ export async function memorySearch(
       throw new Error("Hybrid search requires an embedding provider. Set MNEMON_EMBEDDING_PROVIDER env var.");
     }
     if (!isVecLoaded()) {
+      const reason = getVecUnavailableReason();
+      if (reason) {
+        throw new Error(`Hybrid search unavailable: ${reason}`);
+      }
       throw new Error("Hybrid search requires sqlite-vec. Install: npm install sqlite-vec");
     }
     ids = await hybridSearch(db, input, embedder, fetchLimit);
@@ -729,31 +745,39 @@ async function vectorSearch(
   limit: number
 ): Promise<Array<{ id: string; score: number }>> {
   const queryVec = await embedder.embed(input.query);
-  // Over-fetch to account for filter losses
-  const knnLimit = Math.min(limit * 3, 200);
-  const results = knnSearch(db, queryVec, knnLimit, !input.include_superseded);
-
-  if (results.length === 0) return [];
-
-  // Apply the same filters as FTS/exact search
   const { conditions, params } = buildMemoryFilters(db, input);
+  const ceiling = Math.min(Math.max(vecCount(db), 1), VECTOR_KNN_MAX);
+  let knnLimit = Math.min(limit * VECTOR_KNN_INITIAL_MULTIPLIER, ceiling);
 
-  const knnIds = results.map((r) => r.memory_id);
-  const idPlaceholders = knnIds.map(() => "?").join(", ");
-  const allConditions = [`id IN (${idPlaceholders})`, ...conditions];
+  while (true) {
+    const results = knnSearch(db, queryVec, knnLimit, !input.include_superseded);
+    let survivors: typeof results = [];
 
-  const filtered = db
-    .prepare<unknown[], { id: string }>(
-      `SELECT id FROM memories WHERE ${allConditions.join(" AND ")}`
-    )
-    .all(...knnIds, ...params);
+    if (results.length > 0) {
+      const knnIds = results.map((r) => r.memory_id);
+      const idPlaceholders = knnIds.map(() => "?").join(", ");
+      const allConditions = [`id IN (${idPlaceholders})`, ...conditions];
+      const filtered = db
+        .prepare<unknown[], { id: string }>(
+          `SELECT id FROM memories WHERE ${allConditions.join(" AND ")}`
+        )
+        .all(...knnIds, ...params);
+      const filteredSet = new Set(filtered.map((r) => r.id));
+      survivors = results.filter((r) => filteredSet.has(r.memory_id));
+    }
 
-  const filteredSet = new Set(filtered.map((r) => r.id));
+    // Only the ceiling stops the widening. A short (or empty) result set is
+    // NOT an exhaustion signal: knnSearch drops superseded rows AFTER vec0
+    // applies `k`, so k nearest neighbors that happen to be superseded yield
+    // few rows while the index still holds matches further out.
+    if (survivors.length >= limit || knnLimit >= ceiling) {
+      return survivors
+        .map((r) => ({ id: r.memory_id, score: Math.max(0, 1 - r.distance) }))
+        .slice(0, limit);
+    }
 
-  return results
-    .filter((r) => filteredSet.has(r.memory_id))
-    .map((r) => ({ id: r.memory_id, score: Math.max(0, 1 - r.distance) }))
-    .slice(0, limit);
+    knnLimit = Math.min(knnLimit * VECTOR_KNN_EXPANSION_FACTOR, ceiling);
+  }
 }
 
 /**
