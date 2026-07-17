@@ -81,6 +81,12 @@ describe("extractDatesFromQuery", () => {
     expect(result.date_to).toBe(expectedTo);
   });
 
+  it("trims surrounding hyphens and punctuation from the cleaned query", () => {
+    const result = extractDatesFromQuery("встречи - март 2025");
+    expect(result.date_from).toBe("2025-03-01");
+    expect(result.cleanedQuery).toBe("встречи");
+  });
+
   it("extracts exact date with single-digit day", () => {
     const result = extractDatesFromQuery("5 июля 2025");
     expect(result.date_from).toBe("2025-07-05");

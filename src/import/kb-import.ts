@@ -13,12 +13,11 @@ import { globSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../db.js";
 import { memoryAdd } from "../tools/memory-add.js";
-import type { Layer, EntityType, MemoryAddInput } from "../types.js";
+import type { Layer, MemoryAddInput } from "../types.js";
 import {
-  type DirectoryMapping,
   type FileMapping,
 } from "./kb-config.js";
-import { loadConfig, type LoadedConfig } from "./config-loader.js";
+import { loadConfig } from "./config-loader.js";
 import {
   parseFile,
   splitByHeading,

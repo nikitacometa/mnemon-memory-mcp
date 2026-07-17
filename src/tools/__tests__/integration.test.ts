@@ -15,7 +15,6 @@ import { memoryExport } from "../memory-export.js";
 import { memoryHealth } from "../memory-health.js";
 import { sessionStart, sessionEnd, sessionList } from "../session.js";
 import { stemText } from "../../stemmer.js";
-import type { MemoryAddInput, MemorySearchInput } from "../../types.js";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -317,7 +316,7 @@ describe("memory_inspect", () => {
   });
 
   it("superseded chain entries do not contain stemmed columns", () => {
-    const v1 = memoryAdd(db, { content: "chain v1", layer: "semantic", source_file: "leak-chain.md" });
+    memoryAdd(db, { content: "chain v1", layer: "semantic", source_file: "leak-chain.md" });
     const v2 = memoryAdd(db, { content: "chain v2", layer: "semantic", source_file: "leak-chain.md" });
 
     const result = memoryInspect(db, { id: v2.id, include_history: true });
@@ -551,10 +550,6 @@ describe("memory_update — supersede protection", () => {
   });
 
   it("superseding entry inherits non-expired expires_at", () => {
-    const future = new Date();
-    future.setDate(future.getDate() + 30);
-    const futureStr = future.toISOString().replace(/\.\d{3}Z$/, "Z");
-
     const old = memoryAdd(db, { content: "will expire later", layer: "semantic", ttl_days: 30 });
     const result = memoryUpdate(db, { id: old.id, supersede: true, new_content: "updated version" });
     const row = db.prepare("SELECT expires_at FROM memories WHERE id = ?").get(result.new_id!) as { expires_at: string | null };

@@ -213,7 +213,7 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
 
   // Collapse whitespace and trim surrounding punctuation
   cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
-  cleaned = cleaned.replace(/^[?!.,;:\s—–\-]+|[?!.,;:\s—–\-]+$/g, "").trim();
+  cleaned = cleaned.replace(/^[?!.,;:\s—–-]+|[?!.,;:\s—–-]+$/g, "").trim();
 
   return { date_from, date_to, cleanedQuery: cleaned };
 }

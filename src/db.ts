@@ -15,9 +15,6 @@ import { stemText } from "./stemmer.js";
 const DB_DIR = join(homedir(), ".mnemon-mcp");
 const DB_PATH = process.env["MNEMON_DB_PATH"] ?? join(DB_DIR, "memory.db");
 
-/** Target schema version. Increment when adding new migrations. */
-const SCHEMA_VERSION = 7;
-
 /**
  * Open (or create) the SQLite database with WAL mode and all required tables.
  * Idempotent — safe to call on every server startup.

@@ -69,7 +69,7 @@ const TITLE_TEMPLATES = [
   (i: number) => `Человек-дизайн ${i}`,
   (i: number) => `Архитектурное решение ${i}`,
   (i: number) => `Benchmark ${i}`,
-  (i: number) => null,
+  (_i: number) => null,
 ];
 
 function pick<T>(arr: T[], index: number): T {

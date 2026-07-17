@@ -40,7 +40,7 @@ function escapeFtsToken(token: string): string {
   // Remove FTS5 query syntax chars + general punctuation from natural language queries
   // Note: hyphens (-) NOT stripped — unicode61 tokenizer uses them as separators
   return token
-    .replace(/["'^*():?!.,;—–\/]/g, "")
+    .replace(/["'^*():?!.,;—–/]/g, "")
     .replace(/ё/g, "е")
     .replace(/Ё/g, "Е")
     .replace(/\b(AND|OR|NOT|NEAR)\b/gi, "");
@@ -97,7 +97,7 @@ function buildFtsQuery(query: string, operator: "AND" | "OR" = "AND"): string {
   // so "рэп-архив" must become separate tokens to match the stemmed index)
   const rawTokens = query
     .trim()
-    .split(/[\s\u2013\u2014\u2015—–\-]+/)
+    .split(/[\s\u2013\u2014\u2015—–-]+/)
     .filter((t) => t.length > 0);
 
   // Filter stop words. Strip trailing punctuation before lookup so "Никиты?" → "никиты"
@@ -266,7 +266,7 @@ export async function memorySearch(
   // If so, pure date-range search is more accurate than FTS5 over stripped tokens.
   const isQueryEmpty = !input.query.trim() ||
     input.query.trim()
-      .split(/[\s\u2013\u2014\u2015—–\-]+/)
+      .split(/[\s\u2013\u2014\u2015—–-]+/)
       .every((t) => {
         const norm = t.replace(/[?!.,;:—–\u2014\u2013]+$/, "").toLowerCase();
         return !norm || norm.length <= 1 || isStopWord(norm) || /^\d{1,2}$/.test(norm);
@@ -319,7 +319,7 @@ export async function memorySearch(
   // Extract raw query terms for snippet highlighting
   const queryTerms = input.query
     .trim()
-    .split(/[\s\u2013\u2014\u2015—–\-]+/)
+    .split(/[\s\u2013\u2014\u2015—–-]+/)
     .filter((t) => t.length >= 2);
 
   // Map back scores, boost by importance, decay, and recency for ranking
@@ -578,7 +578,7 @@ function ftsSearch(
     }
 
     // Supplement with OR results when AND returns fewer than limit results.
-    if (results.length < limit && input.query.trim().split(/[\s\-]+/).length > 1) {
+    if (results.length < limit && input.query.trim().split(/[\s-]+/).length > 1) {
       const orQuery = buildFtsQuery(input.query, "OR");
       const orResults = runQuery(orQuery, 0.8);
       const existingIds = new Set(results.map((r) => r.id));
@@ -889,4 +889,3 @@ function logSearch(
     // Best-effort logging — never fail a search because of log write
   }
 }
-
