@@ -80,7 +80,7 @@ Two lessons the history taught us:
    unindexed `id` column silently consumed the first weight argument, so
    actual weighting was title=1/content=2 instead of the documented
    title=3/content=1) survived 250+ green tests and was caught by an audit,
-   then confirmed by exactly this eval: fixing it moved hybrid 90.3 → 91.8.
+   then confirmed by exactly this eval: fixing it moved hybrid 90.3 → 91.7.
 
 ## Known failures
 

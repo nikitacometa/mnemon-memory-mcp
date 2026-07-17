@@ -149,7 +149,7 @@ In `~/.claude/mcp.json`:
 ## Known Issues
 
 1. **Russian morphology** — Snowball stemmer fully integrated at index and query time with bilingual month expansion (EN↔RU). Edge cases with irregular forms may still miss.
-2. **L2 retrieval (MCP hybrid) = 91.8/100** (2026-07-17, 797-memory corpus) — Recall@5=0.919, MRR=0.882, nDCG@5=0.867. FTS-only=88.9. Up from 36.9 baseline. History and methodology: `docs/EVALUATION.md`
+2. **L2 retrieval (MCP hybrid) = 91.7/100** (2026-07-17, 797-memory corpus) — Recall@5=0.919, MRR=0.878, nDCG@5=0.869. FTS-only=88.9, vector-only=89.2. Up from 36.9 baseline. Publishing a number? It lives in 4 places — this file, README, `docs/EVALUATION.md`, `docs/adr/0002-*` — update them together. Methodology + noise floor (±0.1): `docs/EVALUATION.md`
 3. **272 tests** — incl. MCP dispatch layer (InMemoryTransport), HTTP transport factory, hybrid RRF positive-path
 4. **Hybrid soft regressions** — FAC-002, XRF-001 regress in hybrid vs FTS (vector noise dilutes strong FTS signal via RRF). Overall hybrid still +4.8 over FTS
 5. **No cycle protection** in superseding chains
