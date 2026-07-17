@@ -167,6 +167,8 @@ describe("createMcpServer", () => {
       const log = stderr.mock.calls.map((call) => String(call[0])).join("");
       expect(log).toContain('"event":"memory_reembedding_failed"');
       expect(log).toContain(`"memory_id":"${id}"`);
+      expect(log).toContain('"error_type":"Error"');
+      expect(log).not.toContain(updatedContent);
     } finally {
       stderr.mockRestore();
     }
