@@ -20,7 +20,13 @@
 
 import { openDatabase } from "../db.js";
 import { createEmbedder } from "../embedder.js";
-import { loadSqliteVec, createVecTable, upsertVec, vecCount } from "../vector.js";
+import {
+  createVecTable,
+  isVecLoaded,
+  loadSqliteVec,
+  upsertVec,
+  vecCount,
+} from "../vector.js";
 
 const DEFAULT_BATCH_SIZE = 50;
 const MAX_BATCH_SIZE = 2048;
@@ -110,17 +116,23 @@ async function main(): Promise<void> {
   console.log(`Embedder: ${modelTag}`);
   console.log(`Batch size: ${args.batchSize}`);
 
-  // 4. Ensure vec table exists with the correct dimensions
-  createVecTable(db, embedder.dimensions);
-
-  // 5. If --force, delete all existing vectors to avoid stale entries for
-  //    superseded memories that may have been embedded before.
+  // Different embedding spaces cannot share a vec0 table, and vec0 fixes its
+  // dimensions at creation time. A forced backfill must rebuild both records.
   if (args.force) {
-    db.prepare("DELETE FROM memories_vec").run();
-    console.log("--force: cleared all existing vectors.");
+    db.prepare("DROP TABLE IF EXISTS memories_vec").run();
+    db.prepare("DELETE FROM vector_index_meta").run();
+    console.log("--force: cleared the vector index.");
   }
 
-  // 6. Find memories to embed.
+  // 4. Ensure vec table exists with the correct dimensions
+  createVecTable(db, embedder.dimensions, embedder);
+  if (!isVecLoaded()) {
+    console.error("ERROR: Vector index is incompatible with the configured embedder.");
+    db.close();
+    process.exit(1);
+  }
+
+  // 5. Find memories to embed.
   //    --force:   all active memories
   //    default:   active memories NOT already in memories_vec
   //
@@ -150,7 +162,7 @@ async function main(): Promise<void> {
 
   console.log(`Memories to embed: ${total}`);
 
-  // 7. Batch embed with progress reporting
+  // 6. Batch embed with progress reporting
   const updateEmbeddingModel = db.prepare<[string, string], void>(
     "UPDATE memories SET embedding_model = ? WHERE id = ?"
   );
@@ -204,7 +216,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // 8. Final summary
+  // 7. Final summary
   const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   const finalCount = vecCount(db);
 

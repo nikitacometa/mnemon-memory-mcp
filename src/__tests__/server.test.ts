@@ -87,7 +87,6 @@ describe("createMcpServer", () => {
 
   it("keeps memory_add successful when embedding rejects", async () => {
     expect(loadSqliteVec(db)).toBe(true);
-    createVecTable(db, 4);
     const rejectingEmbedder: Embedder & { calls: number } = {
       dimensions: 4,
       provider: "test",
@@ -101,6 +100,7 @@ describe("createMcpServer", () => {
         throw new Error("embedding unavailable");
       },
     };
+    createVecTable(db, rejectingEmbedder.dimensions, rejectingEmbedder);
     await connect(rejectingEmbedder);
 
     const result = await client.callTool({

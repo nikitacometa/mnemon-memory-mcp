@@ -33,7 +33,7 @@ let embedder: ReturnType<typeof createEmbedder> = null;
 try {
   embedder = createEmbedder();
   if (embedder && vecAvailable) {
-    createVecTable(db, embedder.dimensions);
+    createVecTable(db, embedder.dimensions, embedder);
   }
 } catch (err) {
   // Embedder creation is best-effort — server runs FTS-only without it

@@ -112,6 +112,12 @@ function runMigrations(db: Database.Database): void {
     db.pragma("user_version = 7");
     currentVersion = 7;
   }
+
+  if (currentVersion < 8) {
+    applyMigration8(db);
+    db.pragma("user_version = 8");
+    currentVersion = 8;
+  }
 }
 
 /**
@@ -474,6 +480,24 @@ function applyMigration6(db: Database.Database): void {
 function applyMigration7(db: Database.Database): void {
   db.transaction(() => {
     safeDropColumn(db, "memories", "embedding");
+  })();
+}
+
+/**
+ * Migration v8: Persist the embedding space used by the vector index.
+ * A singleton prevents vectors from incompatible models sharing one index.
+ */
+function applyMigration8(db: Database.Database): void {
+  db.transaction(() => {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS vector_index_meta (
+        id         INTEGER PRIMARY KEY CHECK (id = 1),
+        provider   TEXT NOT NULL,
+        model      TEXT NOT NULL,
+        dimensions INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      )
+    `).run();
   })();
 }
 
