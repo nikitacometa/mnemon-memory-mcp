@@ -42,17 +42,31 @@ for the deterministic-ranking constraint from ADR-0001.
 
 ## Measured consequences
 
-Same corpus (797 memories), same golden set, same day (2026-07-17):
+Same corpus (797 memories), same golden set, one batch (2026-07-17):
 
 | Mode | L2 score | Recall@5 | MRR | nDCG@5 |
 |------|----------|----------|-----|--------|
 | FTS-only | 88.9 | 0.907 | 0.817 | 0.816 |
-| Hybrid RRF | **91.8** | **0.919** | **0.882** | **0.867** |
+| Vector-only | 89.2 | 0.898 | 0.832 | 0.828 |
+| Hybrid RRF | **91.7** | **0.919** | **0.878** | **0.869** |
 
-Known trade-off, tracked rather than hidden: on 2 golden cases with a very
-strong lexical match, vector noise dilutes the FTS signal through the fusion
-and slightly demotes the correct hit. Net effect is still positive; the
-per-case regressions are documented in EVALUATION.md.
+The decisive fact is that hybrid beats **both** legs, not just the weaker one.
+The legs fail differently — lexical has the better raw recall, vector the
+better ranking — and RRF keeps both properties. Had fusion merely landed
+between the two, the write-path complexity and the API-key dependency would
+not have been worth it, and this ADR would read the other way.
+
+Costs and trade-offs, tracked rather than hidden:
+
+- Vector and hybrid pay ~50× the FTS latency on this corpus, nearly all of it
+  embedding round-trips. FTS stays the zero-config default.
+- On 2 golden cases with a very strong lexical match, vector neighbors dilute
+  the FTS signal through the fusion and slightly demote the correct hit. Net
+  effect is still positive; the per-case regressions are in EVALUATION.md.
+- Filters are applied after the KNN scan, so the candidate pool has to widen
+  until enough survivors are found — see the vector-pool note in
+  ARCHITECTURE.md. Fusion made retrieval better and the write/read paths
+  genuinely more complicated; both halves of that are real.
 
 ## Alternatives considered
 

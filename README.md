@@ -41,18 +41,22 @@ Retrieval is measured against a 50-case golden set on a real 797-memory
 bilingual (RU/EN) corpus, through the actual MCP server — not a
 reimplementation. Current numbers ([methodology & history](docs/EVALUATION.md)):
 
-| Metric | FTS-only | Hybrid (FTS5 + vector, RRF) |
-|--------|---------:|---------------------------:|
-| Composite score | 88.9 | **91.8** |
-| Recall@5 | 0.907 | **0.919** |
-| MRR | 0.817 | **0.882** |
-| nDCG@5 | 0.816 | **0.867** |
-| Negative precision | 1.000 | 1.000 |
+| Metric | FTS-only | Vector-only | Hybrid (RRF) |
+|--------|---------:|------------:|-------------:|
+| Composite score | 88.9 | 89.2 | **91.7** |
+| Recall@5 | 0.907 | 0.898 | **0.919** |
+| MRR | 0.817 | 0.832 | **0.878** |
+| nDCG@5 | 0.816 | 0.828 | **0.869** |
+| Negative precision | 1.000 | 1.000 | 1.000 |
 
-The eval doc also tracks the failures: score drift under corpus growth, the
-BM25 field-weight bug the eval caught, and the two cases where hybrid fusion
-still loses to pure lexical search. Numbers you can't audit are marketing;
-[read how these are produced](docs/EVALUATION.md).
+Hybrid beats **both** legs individually, which is the whole argument for
+fusing them: lexical search has the better raw recall, vector search the
+better ranking, and RRF keeps both instead of averaging them away.
+
+The eval doc tracks the failures too — score drift under corpus growth, the
+BM25 field-weight bug the eval caught, the two cases where fusion still loses
+to pure lexical search, and what the golden set does *not* cover. Numbers you
+can't audit are marketing; [read how these are produced](docs/EVALUATION.md).
 
 ## Architecture
 
