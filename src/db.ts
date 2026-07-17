@@ -7,7 +7,7 @@
  */
 
 import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { stemText } from "./stemmer.js";
@@ -25,10 +25,31 @@ const SCHEMA_VERSION = 7;
 export function openDatabase(dbPath: string = DB_PATH): Database.Database {
   if (dbPath !== ":memory:") {
     const dir = join(dbPath, "..");
-    mkdirSync(dir, { recursive: true });
+    // mode is ignored for pre-existing dirs — chmod repairs installs created
+    // before this hardening (SECURITY.md promises user-only permissions)
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    try {
+      chmodSync(dir, 0o700);
+    } catch (err) {
+      console.error(`[mnemon-mcp] Could not restrict db directory permissions: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   const db = new Database(dbPath);
+
+  if (dbPath !== ":memory:") {
+    // Chmod before the WAL pragma below creates -wal/-shm — they inherit the
+    // database file's permissions; existing sidecars are repaired explicitly
+    for (const suffix of ["", "-wal", "-shm"]) {
+      try {
+        chmodSync(dbPath + suffix, 0o600);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+          console.error(`[mnemon-mcp] Could not restrict permissions on ${dbPath}${suffix}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    }
+  }
 
   // WAL mode: better concurrent read performance, atomic writes
   db.pragma("journal_mode = WAL");

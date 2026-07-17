@@ -16,6 +16,9 @@ import { memoryHealth } from "../memory-health.js";
 import { sessionStart, sessionEnd, sessionList } from "../session.js";
 import { stemText } from "../../stemmer.js";
 import type { MemoryAddInput, MemorySearchInput } from "../../types.js";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 let db: Database.Database;
 
@@ -1258,6 +1261,26 @@ describe("vector search — graceful degradation", () => {
     memoryAdd(db, { content: "exact vector test", layer: "semantic" });
     const result = await memorySearch(db, { query: "exact vector test", mode: "exact" });
     expect(result.memories.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// database file permissions
+// ---------------------------------------------------------------------------
+
+describe("database file permissions", () => {
+  it("creates the db directory 0700 and db file 0600", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mnemon-perms-"));
+    const dbPath = join(dir, "store", "perm.db");
+
+    const pdb = openDatabase(dbPath);
+    pdb.close();
+
+    if (process.platform !== "win32") {
+      expect(statSync(join(dir, "store")).mode & 0o777).toBe(0o700);
+      expect(statSync(dbPath).mode & 0o777).toBe(0o600);
+    }
+    rmSync(dir, { recursive: true, force: true });
   });
 });
 

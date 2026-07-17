@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - HTTP transport binds to `127.0.0.1` by default; non-loopback binds require `MNEMON_AUTH_TOKEN` or an explicit `MNEMON_ALLOW_INSECURE_HTTP=1` opt-in
 - CORS is now opt-in via `MNEMON_CORS_ORIGIN` (previously defaulted to `*`)
+- Database directory and files are created with user-only permissions (0700/0600) and repaired on startup for existing installs
 
 ### Fixed
 - BM25 field weights were silently shifted onto the wrong columns by the unindexed `id` column — actual weighting was title=1/content=2 instead of the documented title=3/content=1/entity=2
