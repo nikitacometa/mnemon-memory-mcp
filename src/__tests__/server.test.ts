@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -112,6 +112,64 @@ describe("createMcpServer", () => {
     expect(result.isError).not.toBe(true);
     expect(parsed.created).toBe(true);
     expect(rejectingEmbedder.calls).toBe(1);
+  });
+
+  it("invalidates a stale vector when memory_update re-embedding rejects", async () => {
+    expect(loadSqliteVec(db)).toBe(true);
+    const updatedContent = "new lexical payload";
+    const embedder: Embedder = {
+      dimensions: 4,
+      provider: "test",
+      model: "update-failure",
+      embed: async (text) => {
+        if (text === updatedContent) throw new Error("embedding unavailable");
+        return new Float32Array([1, 0, 0, 0]);
+      },
+      embedBatch: async (texts) => texts.map(() => new Float32Array([1, 0, 0, 0])),
+    };
+    createVecTable(db, embedder.dimensions, embedder);
+    await connect(embedder);
+
+    const added = await client.callTool({
+      name: "memory_add",
+      arguments: { content: "old semantic meaning", layer: "semantic" },
+    });
+    const { id } = JSON.parse(responseText(added)) as { id: string };
+    expect(db.prepare("SELECT count(*) AS count FROM memories_vec").get()).toMatchObject({ count: 1 });
+
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const updated = await client.callTool({
+        name: "memory_update",
+        arguments: { id, content: updatedContent },
+      });
+
+      expect(updated.isError).not.toBe(true);
+      expect(db.prepare("SELECT count(*) AS count FROM memories_vec").get()).toMatchObject({ count: 0 });
+      expect(db.prepare<[string], { content: string; embedding_model: string | null }>(
+        "SELECT content, embedding_model FROM memories WHERE id = ?"
+      ).get(id)).toEqual({ content: updatedContent, embedding_model: null });
+
+      const vectorResult = await client.callTool({
+        name: "memory_search",
+        arguments: { query: "old semantic meaning", mode: "vector" },
+      });
+      const vectorPayload = JSON.parse(responseText(vectorResult)) as { memories: Array<{ id: string }> };
+      expect(vectorPayload.memories).toEqual([]);
+
+      const ftsResult = await client.callTool({
+        name: "memory_search",
+        arguments: { query: "new lexical payload", mode: "fts" },
+      });
+      const ftsPayload = JSON.parse(responseText(ftsResult)) as { memories: Array<{ id: string }> };
+      expect(ftsPayload.memories.map((memory) => memory.id)).toContain(id);
+
+      const log = stderr.mock.calls.map((call) => String(call[0])).join("");
+      expect(log).toContain('"event":"memory_reembedding_failed"');
+      expect(log).toContain(`"memory_id":"${id}"`);
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   it("sanitizes filesystem paths in tool errors", async () => {

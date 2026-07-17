@@ -17,6 +17,7 @@ import type {
   MemorySearchInput,
   MemorySearchOutput,
   MemorySearchResult,
+  SearchMode,
 } from "../types.js";
 import type { Embedder } from "../embedder.js";
 import { isStopWord } from "../stop-words.js";
@@ -34,6 +35,47 @@ const SNIPPET_TOKENS = 64;
 const VECTOR_KNN_INITIAL_MULTIPLIER = 3;
 const VECTOR_KNN_EXPANSION_FACTOR = 4;
 const VECTOR_KNN_MAX = 2000;
+
+interface SqliteErrorLike {
+  code?: unknown;
+  message?: unknown;
+}
+
+/** Unexpected SQLite/storage failure while executing a memory search. */
+export class MemorySearchStorageError extends Error {
+  readonly code = "MEMORY_SEARCH_STORAGE_ERROR";
+
+  constructor(
+    readonly searchMode: SearchMode,
+    readonly sanitizedQuery: string,
+    cause: unknown
+  ) {
+    super(
+      `Memory search storage failure (mode=${searchMode}, query=${sanitizedQuery})`,
+      { cause }
+    );
+    this.name = "MemorySearchStorageError";
+  }
+}
+
+function sanitizeQuery(query: string): string {
+  const tokenCount = query.trim().split(/\s+/).filter(Boolean).length;
+  return `<redacted:length=${query.length},tokens=${tokenCount}>`;
+}
+
+/**
+ * Only FTS5 MATCH parser failures are safe to degrade to zero results.
+ * SQLITE_ERROR alone is intentionally insufficient: missing tables, corrupt
+ * schemas, and broken migrations use the same broad SQLite error code.
+ */
+function isFts5QuerySyntaxError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as SqliteErrorLike;
+  if (candidate.code !== "SQLITE_ERROR" || typeof candidate.message !== "string") {
+    return false;
+  }
+  return /^fts5: syntax error near ".*"$/.test(candidate.message);
+}
 
 /** Resolve entity alias to canonical name. Returns the input if no alias exists. */
 function resolveEntityName(db: Database.Database, name: string): string {
@@ -309,7 +351,7 @@ export async function memorySearch(
   } else if (mode === "exact") {
     ids = exactSearch(db, input, fetchLimit);
   } else {
-    ids = ftsSearch(db, input, fetchLimit);
+    ids = ftsSearch(db, input, fetchLimit, mode);
   }
 
   if (ids.length === 0) {
@@ -476,7 +518,8 @@ function dateRangeSearch(
 function ftsSearch(
   db: Database.Database,
   input: MemorySearchInput,
-  limit: number
+  limit: number,
+  searchMode: SearchMode = "fts"
 ): Array<{ id: string; score: number }> {
   let ftsQuery: string;
   try {
@@ -570,43 +613,43 @@ function ftsSearch(
       const p = [matchExpr, ...filterParams, limit];
       const rows = db.prepare<unknown[], FtsRow>(sql).all(...p);
       return rows.map((r) => ({ id: r.id, score: normalizeBm25(r.rank) * penalty }));
-    } catch {
-      return [];
+    } catch (error) {
+      if (isFts5QuerySyntaxError(error)) return [];
+      throw new MemorySearchStorageError(
+        searchMode,
+        sanitizeQuery(input.query),
+        error
+      );
     }
   };
 
-  try {
-    let results = runQuery(ftsQuery);
+  let results = runQuery(ftsQuery);
 
-    // Progressive AND relaxation: when full AND with 3+ tokens returns too few results,
-    // try AND with just the 2 longest (most specific) stems before falling back to OR.
-    if (results.length < limit) {
-      const contentTokens = ftsQuery.split(/ AND /);
-      if (contentTokens.length >= 3) {
-        // Sort by stem length descending (longer stems = more specific)
-        const top2 = [...contentTokens].sort((a, b) => b.length - a.length).slice(0, 2);
-        const relaxedQuery = top2.join(" AND ");
-        const relaxedResults = runQuery(relaxedQuery, 0.9);
-        const existingIds = new Set(results.map((r) => r.id));
-        const newOnly = relaxedResults.filter((r) => !existingIds.has(r.id));
-        results = [...results, ...newOnly];
-      }
-    }
-
-    // Supplement with OR results when AND returns fewer than limit results.
-    if (results.length < limit && input.query.trim().split(/[\s-]+/).length > 1) {
-      const orQuery = buildFtsQuery(input.query, "OR");
-      const orResults = runQuery(orQuery, 0.8);
+  // Progressive AND relaxation: when full AND with 3+ tokens returns too few results,
+  // try AND with just the 2 longest (most specific) stems before falling back to OR.
+  if (results.length < limit) {
+    const contentTokens = ftsQuery.split(/ AND /);
+    if (contentTokens.length >= 3) {
+      // Sort by stem length descending (longer stems = more specific)
+      const top2 = [...contentTokens].sort((a, b) => b.length - a.length).slice(0, 2);
+      const relaxedQuery = top2.join(" AND ");
+      const relaxedResults = runQuery(relaxedQuery, 0.9);
       const existingIds = new Set(results.map((r) => r.id));
-      const orOnly = orResults.filter((r) => !existingIds.has(r.id));
-      results = [...results, ...orOnly];
+      const newOnly = relaxedResults.filter((r) => !existingIds.has(r.id));
+      results = [...results, ...newOnly];
     }
-
-    return results;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`FTS5 query failed: ${message}`);
   }
+
+  // Supplement with OR results when AND returns fewer than limit results.
+  if (results.length < limit && input.query.trim().split(/[\s-]+/).length > 1) {
+    const orQuery = buildFtsQuery(input.query, "OR");
+    const orResults = runQuery(orQuery, 0.8);
+    const existingIds = new Set(results.map((r) => r.id));
+    const orOnly = orResults.filter((r) => !existingIds.has(r.id));
+    results = [...results, ...orOnly];
+  }
+
+  return results;
 }
 
 function exactSearch(
@@ -806,7 +849,7 @@ async function hybridSearch(
 ): Promise<Array<{ id: string; score: number }>> {
   // Core search: FTS + vector on the original query
   const coreSearches: Array<Promise<Array<{ id: string; score: number }>>> = [
-    Promise.resolve(ftsSearch(db, input, limit)),
+    Promise.resolve(ftsSearch(db, input, limit, "hybrid")),
     vectorSearch(db, input, embedder, limit),
   ];
 
@@ -823,13 +866,13 @@ async function hybridSearch(
     for (const entity of entities) {
       // Both FTS and vector for entity — FTS catches exact terms, vector captures semantics
       entitySearches.push(
-        Promise.resolve(ftsSearch(db, { ...input, query: entity }, limit))
+        Promise.resolve(ftsSearch(db, { ...input, query: entity }, limit, "hybrid"))
       );
       entitySearches.push(vectorSearch(db, { ...input, query: entity }, embedder, limit));
     }
     if (remainder.length > 3) {
       topicSearches.push(
-        Promise.resolve(ftsSearch(db, { ...input, query: remainder }, limit))
+        Promise.resolve(ftsSearch(db, { ...input, query: remainder }, limit, "hybrid"))
       );
       topicSearches.push(vectorSearch(db, { ...input, query: remainder }, embedder, limit));
     }

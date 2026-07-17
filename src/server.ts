@@ -65,7 +65,7 @@ import type {
 } from "./types.js";
 
 import type { Embedder } from "./embedder.js";
-import { upsertVec, deleteVec, isVecLoaded } from "./vector.js";
+import { upsertVec, deleteVec, invalidateVec, isVecLoaded } from "./vector.js";
 
 import { loadConfig } from "./import/config-loader.js";
 import { addExtraStopWords } from "./stop-words.js";
@@ -188,11 +188,24 @@ export function createMcpServer(db: Database.Database, embedder?: Embedder | nul
         }
         case "memory_update": {
           const input = MemoryUpdateSchema.parse(args) as MemoryUpdateInput;
-          const result = memoryUpdate(db, input);
+          const changesEmbeddedText = input.supersede === true ||
+            input.content !== undefined ||
+            input.title !== undefined;
+          const result = db.transaction(() => {
+            const updateResult = memoryUpdate(db, input);
+            if (isVecLoaded() && changesEmbeddedText) {
+              const activeId = updateResult.new_id ?? updateResult.updated_id;
+              invalidateVec(db, activeId);
+              if (updateResult.new_id) {
+                invalidateVec(db, updateResult.updated_id);
+              }
+            }
+            return updateResult;
+          })();
           // Re-embed updated or new (superseded) memory
-          if (embedder && isVecLoaded()) {
+          if (embedder && isVecLoaded() && changesEmbeddedText) {
+            const activeId = result.new_id ?? result.updated_id;
             try {
-              const activeId = result.new_id ?? result.updated_id;
               const row = db.prepare<[string], { title: string | null; content: string }>(
                 "SELECT title, content FROM memories WHERE id = ?"
               ).get(activeId);
@@ -201,12 +214,16 @@ export function createMcpServer(db: Database.Database, embedder?: Embedder | nul
                 const embedding = await embedder.embed(text);
                 upsertVec(db, activeId, embedding, embedder);
               }
-              // Remove stale vector for superseded entry
-              if (result.new_id) {
-                deleteVec(db, result.updated_id);
-              }
-            } catch {
-              // Best-effort
+            } catch (error) {
+              process.stderr.write(`[mnemon-mcp] ${JSON.stringify({
+                level: "error",
+                event: "memory_reembedding_failed",
+                operation: "memory_update",
+                memory_id: activeId,
+                provider: embedder.provider,
+                model: embedder.model,
+                error_type: error instanceof Error ? error.name : typeof error,
+              })}\n`);
             }
           }
           return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };

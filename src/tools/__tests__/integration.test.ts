@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../../db.js";
 import { memoryAdd } from "../memory-add.js";
-import { memorySearch } from "../memory-search.js";
+import { memorySearch, MemorySearchStorageError } from "../memory-search.js";
 import { memoryUpdate } from "../memory-update.js";
 import { memoryInspect } from "../memory-inspect.js";
 import { memoryDelete } from "../memory-delete.js";
@@ -661,6 +661,61 @@ describe("edge cases", () => {
     const result = await memorySearch(db, { query: "nonexistent_term_xyz" });
     expect(result.memories).toEqual([]);
     expect(result.returned_count).toBe(0);
+  });
+
+  it("returns no results for an FTS5 MATCH syntax error", async () => {
+    let syntaxError: unknown;
+    try {
+      db.prepare("SELECT id FROM memories_fts WHERE memories_fts MATCH ?")
+        .all("term AND");
+    } catch (error) {
+      syntaxError = error;
+    }
+    expect(syntaxError).toMatchObject({
+      code: "SQLITE_ERROR",
+      message: expect.stringMatching(/^fts5: syntax error near/),
+    });
+
+    const prepare = db.prepare.bind(db);
+    const syntaxFailingDb = new Proxy(db, {
+      get(target, property, receiver) {
+        if (property !== "prepare") return Reflect.get(target, property, receiver);
+        return (sql: string) => {
+          if (sql.includes("FROM memories_fts fts")) {
+            return { all: () => { throw syntaxError; } };
+          }
+          return prepare(sql);
+        };
+      },
+    }) as Database.Database;
+
+    const result = await memorySearch(syntaxFailingDb, { query: "term AND" });
+
+    expect(result.memories).toEqual([]);
+    expect(result.returned_count).toBe(0);
+  });
+
+  it("throws a typed storage error when the FTS table is missing", async () => {
+    const sensitiveQuery = "private search content";
+    db.exec("DROP TABLE memories_fts");
+
+    let caught: unknown;
+    try {
+      await memorySearch(db, { query: sensitiveQuery, mode: "fts" });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(MemorySearchStorageError);
+    const storageError = caught as MemorySearchStorageError;
+    expect(storageError.code).toBe("MEMORY_SEARCH_STORAGE_ERROR");
+    expect(storageError.searchMode).toBe("fts");
+    expect(storageError.sanitizedQuery).toBe("<redacted:length=22,tokens=3>");
+    expect(storageError.message).not.toContain(sensitiveQuery);
+    expect(storageError.cause).toMatchObject({
+      code: "SQLITE_ERROR",
+      message: "no such table: memories_fts",
+    });
   });
 
   it("handles min_confidence filter", async () => {

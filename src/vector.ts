@@ -200,6 +200,17 @@ export function deleteVec(db: Database.Database, memoryId: string): void {
   db.prepare("DELETE FROM memories_vec WHERE memory_id = ?").run(memoryId);
 }
 
+/**
+ * Invalidate an embedding whose source text changed. Call this inside the same
+ * transaction as the content mutation so a committed memory can never retain
+ * a vector (or provenance tag) for its previous text.
+ */
+export function invalidateVec(db: Database.Database, memoryId: string): void {
+  if (!vecDb) return;
+  db.prepare("DELETE FROM memories_vec WHERE memory_id = ?").run(memoryId);
+  db.prepare("UPDATE memories SET embedding_model = NULL WHERE id = ?").run(memoryId);
+}
+
 /** KNN search — returns memory IDs sorted by cosine similarity (ascending distance). */
 export function knnSearch(
   db: Database.Database,
