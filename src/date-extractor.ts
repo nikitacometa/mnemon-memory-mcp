@@ -107,7 +107,6 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
   const stripRanges: Array<[number, number]> = [];
 
   let matched = false;
-  let exactDateFound = false;
   let m: RegExpExecArray | null;
 
   // Pattern 1: Exact date — "3 марта 2026" or "3 марта 2026 года"
@@ -117,7 +116,6 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
   );
   exactPattern.lastIndex = 0;
   while ((m = exactPattern.exec(norm)) !== null) {
-    exactDateFound = true;
     const day = parseInt(m[1]!, 10);
     const monthNum = MONTH_MAP[m[2]!];
     const year = parseInt(m[3]!, 10);
@@ -130,7 +128,10 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
     }
   }
 
-  if (!matched && !exactDateFound) {
+  // A day that fails calendar validation must still fall through to the month
+  // patterns below: "31 февраля 2025" degrades to February 2025 and gets its
+  // date tokens stripped, instead of leaking "31 февраля 2025" into FTS
+  if (!matched) {
     // Pattern 2: Month range — "феврале–марте 2025" or "феврале-марте 2025"
     // Dash variants: hyphen (-), en-dash (–, \u2013), em-dash (—, \u2014), figure dash (\u2012)
     const rangePattern = new RegExp(
@@ -154,7 +155,7 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
     }
   }
 
-  if (!matched && !exactDateFound) {
+  if (!matched) {
     // Pattern 3: Single month + year — "в мае 2025"
     const singlePattern = new RegExp(
       `(${MONTH_PATTERN})\\s+(\\d{4})(?:\\s+года?(?:у)?)?`,

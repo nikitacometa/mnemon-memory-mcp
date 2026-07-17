@@ -72,13 +72,31 @@ describe("extractDatesFromQuery", () => {
     expect(result.cleanedQuery).toBe("Что было в дневнике");
   });
 
+  it("extracts a valid leap day as an exact date", () => {
+    const result = extractDatesFromQuery("29 февраля 2024 года");
+    expect(result.date_from).toBe("2024-02-29");
+    expect(result.date_to).toBe("2024-02-29");
+  });
+
   it.each([
-    ["31 февраля 2025 года", null, null],
-    ["29 февраля 2024 года", "2024-02-29", "2024-02-29"],
-  ] as const)("validates exact calendar date: %s", (query, expectedFrom, expectedTo) => {
-    const result = extractDatesFromQuery(query);
-    expect(result.date_from).toBe(expectedFrom);
-    expect(result.date_to).toBe(expectedTo);
+    ["что было 31 февраля 2025 года", "2025-02-01", "2025-02-28", "что было 31"],
+    ["напоминание про 45 марта 2025", "2025-03-01", "2025-03-31", "напоминание про 45"],
+  ] as const)(
+    "degrades an impossible calendar date to its month: %s",
+    (query, expectedFrom, expectedTo, expectedClean) => {
+      // The day is rejected, but the month/year still carry intent — and the
+      // date tokens must be stripped either way so they never reach FTS
+      const result = extractDatesFromQuery(query);
+      expect(result.date_from).toBe(expectedFrom);
+      expect(result.date_to).toBe(expectedTo);
+      expect(result.cleanedQuery).toBe(expectedClean);
+    }
+  );
+
+  it("never emits an impossible date as a filter bound", () => {
+    const result = extractDatesFromQuery("31 февраля 2025");
+    expect(result.date_from).not.toBe("2025-02-31");
+    expect(result.date_to).not.toBe("2025-02-31");
   });
 
   it("trims surrounding hyphens and punctuation from the cleaned query", () => {
