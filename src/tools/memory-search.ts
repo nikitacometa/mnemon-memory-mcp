@@ -248,9 +248,11 @@ export async function memorySearch(
   if (extracted.date_to && !input.date_to) {
     input = { ...input, date_to: extracted.date_to };
   }
-  // Use cleaned query (dates stripped) for FTS matching
+  // Use cleaned query (dates stripped) for FTS matching. An empty cleaned
+  // query is meaningful: it routes to pure date-range search below — falling
+  // back to the original query here would FTS-match the date words themselves
   if (extracted.date_from || extracted.date_to) {
-    input = { ...input, query: extracted.cleanedQuery || input.query };
+    input = { ...input, query: extracted.cleanedQuery };
   }
 
   let ids: Array<{ id: string; score: number }>;
@@ -427,6 +429,14 @@ function dateRangeSearch(
     params.push(input.min_importance);
   }
 
+  // Temporal fact windows: filter by as_of date (use datetime() for safe comparison)
+  if (input.as_of) {
+    conditions.push("(valid_from IS NULL OR datetime(valid_from) <= datetime(?))");
+    conditions.push("(valid_until IS NULL OR datetime(valid_until) >= datetime(?))");
+    params.push(input.as_of);
+    params.push(input.as_of);
+  }
+
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const sql = `
     SELECT id, importance
@@ -438,10 +448,12 @@ function dateRangeSearch(
   params.push(limit);
 
   const rows = db.prepare<unknown[], { id: string; importance: number }>(sql).all(...params);
-  // Same importance boost formula as BM25 path for consistent ranking
+  // Neutral stand-in for the bm25 score — memorySearch multiplies in the
+  // importance boost exactly once for every mode; doing it here too would
+  // square the boost for pure date-range queries
   return rows.map((r) => ({
     id: r.id,
-    score: 0.3 + 0.7 * r.importance,
+    score: 1.0,
   }));
 }
 
@@ -507,9 +519,12 @@ function ftsSearch(
   const whereClause =
     conditions.length > 0 ? `AND ${conditions.join(" AND ")}` : "";
 
-  // Field weights for bm25(): title=3x, content=1x, entity_name=2x
+  // Field weights for bm25(): title=3x, content=1x, entity_name=2x.
+  // bm25() takes one weight per fts column IN TABLE ORDER, including the
+  // UNINDEXED id column — its slot must be present (0.0) or every weight
+  // shifts onto the wrong column
   const sql = `
-    SELECT fts.id, bm25(memories_fts, 3.0, 1.0, 2.0) AS rank
+    SELECT fts.id, bm25(memories_fts, 0.0, 3.0, 1.0, 2.0) AS rank
     FROM memories_fts fts
     JOIN memories m ON fts.id = m.id
     WHERE memories_fts MATCH ?

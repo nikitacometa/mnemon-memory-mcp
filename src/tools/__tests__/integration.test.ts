@@ -1151,6 +1151,61 @@ describe("memory_search — pagination correctness", () => {
 });
 
 // ---------------------------------------------------------------------------
+// memory_search — ranking
+// ---------------------------------------------------------------------------
+
+describe("memory_search — ranking", () => {
+  it("ranks a title match above a single content match (bm25 field weights)", async () => {
+    // Filler corpus so the query term has meaningful idf
+    for (let i = 0; i < 20; i++) {
+      memoryAdd(db, { content: `plain filler content row number ${i}`, title: `filler note ${i}`, layer: "semantic" });
+    }
+    const inTitle = memoryAdd(db, {
+      content: "unrelated body text about other things entirely",
+      title: "zephyrium discovery",
+      layer: "semantic",
+    });
+    const inContent = memoryAdd(db, {
+      content: "notes about zephyrium in the body of this memory",
+      title: "unrelated title",
+      layer: "semantic",
+    });
+
+    const result = await memorySearch(db, { query: "zephyrium" });
+    const ids = result.memories.map((m) => m.id);
+    expect(ids.indexOf(inTitle.id)).toBeLessThan(ids.indexOf(inContent.id));
+  });
+
+  it("applies the importance boost once for pure date-range queries", async () => {
+    const hi = memoryAdd(db, { content: "встреча с командой", layer: "episodic", importance: 0.9, event_at: "2025-03-15T12:00:00Z" });
+    const lo = memoryAdd(db, { content: "другая заметка", layer: "episodic", importance: 0.2, event_at: "2025-03-15T13:00:00Z" });
+
+    const result = await memorySearch(db, { query: "в марте 2025" });
+    const hiScore = result.memories.find((m) => m.id === hi.id)!.score;
+    const loScore = result.memories.find((m) => m.id === lo.id)!.score;
+
+    // Same layer and created_at → decay and recency cancel in the ratio,
+    // leaving exactly one linear importance boost (not its square)
+    expect(hiScore / loScore).toBeCloseTo((0.3 + 0.7 * 0.9) / (0.3 + 0.7 * 0.2), 5);
+  });
+
+  it("honors as_of in pure date-range queries", async () => {
+    const current = memoryAdd(db, { content: "актуальное правило", layer: "episodic", event_at: "2025-03-10T00:00:00Z" });
+    const outdated = memoryAdd(db, {
+      content: "устаревшее правило",
+      layer: "episodic",
+      event_at: "2025-03-11T00:00:00Z",
+      valid_until: "2025-01-01",
+    });
+
+    const result = await memorySearch(db, { query: "в марте 2025", as_of: "2025-06-01" });
+    const ids = result.memories.map((m) => m.id);
+    expect(ids).toContain(current.id);
+    expect(ids).not.toContain(outdated.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // validation edge cases
 // ---------------------------------------------------------------------------
 
