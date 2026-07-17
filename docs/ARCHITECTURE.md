@@ -135,7 +135,24 @@ latency) — retrieval observability comes built in.
   do not trigger re-indexing.
 - Migrations are idempotent (`PRAGMA user_version` + safe column helpers) —
   a partially applied migration can re-run safely.
-- vitest bench suite (500-row mixed RU/EN corpus): FTS AND ≈ 0.25 ms.
+
+Measured by `npm run bench` (vitest bench, 500-row mixed RU/EN corpus,
+Apple Silicon; mean per operation):
+
+| Operation | Mean |
+|-----------|-----:|
+| `memory_add` (semantic) | 0.45 ms |
+| FTS AND, 2 terms | 2.5 ms |
+| FTS AND, 2 terms + layer filter | 0.36 ms |
+| FTS AND → OR fallback, 4 terms | 0.39 ms |
+| Exact substring | 0.16 ms |
+| FTS + open-ended date filter | 8.5 ms |
+| Export 500 entries as JSON | 4.1 ms |
+
+The layer-filtered query is ~7× *faster* than the unfiltered one: the partial
+index narrows the candidate set before ranking. The open-ended date filter is
+the slowest path — `date(COALESCE(event_at, created_at))` is not indexable, so
+it scans. Both are worth knowing before optimizing the wrong thing.
 
 ## Known limitations
 
