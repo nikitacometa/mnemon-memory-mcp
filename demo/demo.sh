@@ -88,7 +88,7 @@ for i, m in enumerate(results):
     print(f'     {color}{layer}\033[0m · {ent} · confidence {conf:.2f} · score {score:.2f}')
     print()
 qtime = text.get('query_time_ms', 0)
-total = text.get('total_found', len(results))
+total = text.get('returned_count', len(results))
 print(f'  \033[2mFound {total} result(s) in {qtime}ms via FTS5 + BM25\033[0m')
 print()
 "
