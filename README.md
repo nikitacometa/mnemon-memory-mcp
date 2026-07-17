@@ -54,6 +54,30 @@ BM25 field-weight bug the eval caught, and the two cases where hybrid fusion
 still loses to pure lexical search. Numbers you can't audit are marketing;
 [read how these are produced](docs/EVALUATION.md).
 
+## Architecture
+
+```mermaid
+flowchart LR
+    C["MCP client<br/>Claude Code · Cursor · …"] -- "stdio / HTTP" --> T["10 tools · 4 resources · 3 prompts"]
+    T --> R["retrieval pipeline<br/>FTS5 · vector · RRF fusion"]
+    T --> M["memories + supersede chains"]
+    I["KB import pipeline<br/>markdown → memories"] --> M
+    M -- triggers --> F["FTS5 index (stemmed EN+RU)"]
+    R --> F
+    R --> V["sqlite-vec (optional, BYOK)"]
+```
+
+One SQLite file holds memories, the FTS5 index, and the optional vector
+index. Writes go through transactions that keep the supersede-chain invariant;
+reads run the staged retrieval pipeline described under [Search](#search).
+
+The full picture — module boundaries, write/read paths, invariants, and known
+limitations — is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Design
+decisions are recorded as ADRs: [SQLite+FTS5 core](docs/adr/0001-sqlite-fts5-over-vector-db.md),
+[hybrid RRF retrieval](docs/adr/0002-hybrid-retrieval-rrf.md),
+[synchronous driver](docs/adr/0003-synchronous-better-sqlite3.md),
+[layered memory model](docs/adr/0004-layered-memory-model.md).
+
 ## Quick Start
 
 ### Install
@@ -201,26 +225,6 @@ Four modes, all supporting layer / entity / scope / date / confidence filters:
 Scores: `bm25 × (0.3 + 0.7 × importance) × decay(layer) × recency`
 
 Recency boost: `1 / (1 + daysSince / 365)` — gently rewards recently created memories without penalizing old ones.
-
-### Architecture
-
-```mermaid
-flowchart LR
-    C["MCP client<br/>Claude Code · Cursor · …"] -- "stdio / HTTP" --> T["10 tools · 4 resources · 3 prompts"]
-    T --> R["retrieval pipeline<br/>FTS5 · vector · RRF fusion"]
-    T --> M["memories + supersede chains"]
-    I["KB import pipeline<br/>markdown → memories"] --> M
-    M -- triggers --> F["FTS5 index (stemmed EN+RU)"]
-    R --> F
-    R --> V["sqlite-vec (optional, BYOK)"]
-```
-
-The full picture — module boundaries, write/read paths, invariants, known
-limitations — is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Design
-decisions are recorded as ADRs: [SQLite+FTS5 core](docs/adr/0001-sqlite-fts5-over-vector-db.md),
-[hybrid RRF retrieval](docs/adr/0002-hybrid-retrieval-rrf.md),
-[synchronous driver](docs/adr/0003-synchronous-better-sqlite3.md),
-[layered memory model](docs/adr/0004-layered-memory-model.md).
 
 ### Stemming
 
@@ -509,10 +513,14 @@ Extended competitive analysis with sources: [docs/COMPETITORS.md](docs/COMPETITO
 ```bash
 npm run dev        # run via tsx (no build step)
 npm run build      # TypeScript → dist/
-npm test           # vitest (272 tests: unit + integration + MCP dispatch + HTTP transport + hybrid RRF)
+npm run lint       # eslint (flat config)
+npm test           # vitest — unit + integration + MCP dispatch + HTTP transport + hybrid RRF
 npm run bench      # performance benchmarks
 npm run db:backup  # backup database
 ```
+
+CI runs build + lint + tests on Node 20 and 22, then smoke-tests the compiled
+server over real JSON-RPC (`tools/list` must match the exact tool set).
 
 **Stack:** TypeScript 5.9 (strict mode), better-sqlite3, @modelcontextprotocol/sdk, Snowball stemmer, Zod, vitest.
 
@@ -520,11 +528,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for code guidelines.
 
 ## Design Principles
 
-- **Air-gapped** — zero network calls, zero telemetry. Your memories stay on your machine.
+- **Air-gapped by default** — zero telemetry, ever. Out of the box nothing leaves the machine; the only component that talks to the network is the optional embedder, and only to the provider you configure (including a local Ollama).
 - **Single file** — one SQLite database, zero ops, instant backup via file copy.
 - **Deterministic search** — FTS5, not embeddings, is the default. Interpretable, reproducible, no GPU needed.
 - **Structured over flat** — layers encode access patterns; superseding chains encode time.
 - **Minimal** — 4 production dependencies. Works everywhere Node runs.
+- **Measured, not asserted** — retrieval changes are judged against a golden set, [regressions included](docs/EVALUATION.md).
 
 ## License
 
