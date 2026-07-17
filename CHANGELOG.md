@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `from-frontmatter` entity_name resolution — per-entity KB files declare `entity:` in frontmatter
+- `expired_count` in `memory_health` report — total expired rows matching the cleanup predicate
+- `MNEMON_HOST` variable for the HTTP transport bind address
+
+### Security
+- HTTP transport binds to `127.0.0.1` by default; non-loopback binds require `MNEMON_AUTH_TOKEN` or an explicit `MNEMON_ALLOW_INSECURE_HTTP=1` opt-in
+- CORS is now opt-in via `MNEMON_CORS_ORIGIN` (previously defaulted to `*`)
+
+### Fixed
+- BM25 field weights were silently shifted onto the wrong columns by the unindexed `id` column — actual weighting was title=1/content=2 instead of the documented title=3/content=1/entity=2
+- Pure date-range queries applied the importance boost twice, squaring its effect on ranking
+- Pure date-range queries now honor the `as_of` temporal filter like every other search mode
+- Fully-date queries ("в марте 2025") now route to date-range search instead of FTS-matching the date words themselves
+- Expired-entry cleanup crashed with an FK violation (rolling back the whole cleanup) when adjacent supersede-chain links expired together
+- Calendar validation rejects impossible dates (e.g. February 31) instead of silently normalizing them
+- Incremental KB import compares only the latest import per file, so files reverted to earlier content re-import correctly
 
 ## [1.3.0] - 2026-03-18
 

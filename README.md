@@ -285,7 +285,7 @@ The config maps glob patterns to memory layers:
 For remote or multi-client setups:
 
 ```bash
-MNEMON_AUTH_TOKEN=your-secret MNEMON_PORT=3000 npm run start:http
+MNEMON_AUTH_TOKEN=your-secret MNEMON_HOST=0.0.0.0 MNEMON_PORT=3000 npm run start:http
 ```
 
 | Endpoint | Description |
@@ -293,7 +293,7 @@ MNEMON_AUTH_TOKEN=your-secret MNEMON_PORT=3000 npm run start:http
 | `POST /mcp` | MCP JSON-RPC (Bearer auth if token set) |
 | `GET /health` | `{"status":"ok","version":"..."}` |
 
-Rate limiting (100 req/min/IP by default), CORS headers, 1MB body limit, timing-safe auth, graceful shutdown on SIGTERM.
+Binds to `127.0.0.1` by default. Binding to any other host requires `MNEMON_AUTH_TOKEN` — the server refuses to expose the memory store to the network unauthenticated (override with `MNEMON_ALLOW_INSECURE_HTTP=1` on a trusted network). Rate limiting (100 req/min/IP by default), opt-in CORS, 1MB body limit, timing-safe auth, graceful shutdown on SIGTERM.
 
 ## Configuration Reference
 
@@ -303,8 +303,9 @@ Rate limiting (100 req/min/IP by default), CORS headers, 1MB body limit, timing-
 | `MNEMON_KB_PATH` | `.` | Knowledge base root for import |
 | `MNEMON_CONFIG_PATH` | `~/.mnemon-mcp/config.json` | Import config path |
 | `MNEMON_AUTH_TOKEN` | — | Bearer token for HTTP transport |
+| `MNEMON_HOST` | `127.0.0.1` | HTTP transport bind address |
 | `MNEMON_PORT` | `3000` | HTTP transport port |
-| `MNEMON_CORS_ORIGIN` | `*` | CORS `Access-Control-Allow-Origin` |
+| `MNEMON_CORS_ORIGIN` | — | CORS `Access-Control-Allow-Origin` (no CORS headers unless set) |
 | `MNEMON_RATE_LIMIT` | `100` | Max requests per minute per IP (0 = off) |
 
 ## Tool Reference

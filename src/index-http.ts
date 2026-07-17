@@ -44,8 +44,9 @@ try {
   if (embedder && vecAvailable) {
     createVecTable(db, embedder.dimensions);
   }
-} catch {
-  // Embedder creation is best-effort
+} catch (err) {
+  // Embedder creation is best-effort — server runs FTS-only without it
+  console.error(`[mnemon-mcp http] Embedder disabled: ${err instanceof Error ? err.message : String(err)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,9 @@ try {
 
 const AUTH_TOKEN = process.env["MNEMON_AUTH_TOKEN"];
 const MAX_BODY_BYTES = 1_048_576; // 1 MB
-const CORS_ORIGIN = process.env["MNEMON_CORS_ORIGIN"] ?? "*";
+// No CORS by default: server-to-server MCP needs none, and a permissive
+// default would let any webpage read a tokenless localhost instance
+const CORS_ORIGIN = process.env["MNEMON_CORS_ORIGIN"] ?? "";
 
 // ---------------------------------------------------------------------------
 // Rate limiting — simple token bucket per IP
@@ -108,6 +111,7 @@ function rejectUnauthorized(res: ServerResponse): void {
 // ---------------------------------------------------------------------------
 
 function setCorsHeaders(res: ServerResponse): void {
+  if (!CORS_ORIGIN) return;
   res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -202,6 +206,19 @@ if (Number.isNaN(portRaw) || portRaw < 1 || portRaw > 65535) {
 }
 const PORT = portRaw;
 
+// Loopback by default — exposing the full memory store beyond localhost
+// requires an auth token (or an explicit insecure opt-in for trusted networks)
+const HOST = process.env["MNEMON_HOST"] ?? "127.0.0.1";
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+if (!AUTH_TOKEN && !LOOPBACK_HOSTS.has(HOST) && process.env["MNEMON_ALLOW_INSECURE_HTTP"] !== "1") {
+  console.error(
+    `[mnemon-mcp http] Refusing to bind to ${HOST} without MNEMON_AUTH_TOKEN — ` +
+      `this would expose the entire memory store to the network. ` +
+      `Set MNEMON_AUTH_TOKEN, or set MNEMON_ALLOW_INSECURE_HTTP=1 to override on a trusted network.`
+  );
+  process.exit(1);
+}
+
 const httpServer = createServer((req, res) => {
   handleHttpRequest(req, res).catch((err) => {
     console.error(`[mnemon-mcp http] Unhandled error: ${err instanceof Error ? err.message : String(err)}`);
@@ -229,8 +246,8 @@ function shutdown(): void {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-httpServer.listen(PORT, () => {
-  console.error(`[mnemon-mcp http] v${version} listening on port ${PORT}${AUTH_TOKEN ? " (auth enabled)" : " (no auth — set MNEMON_AUTH_TOKEN for production)"}`);
+httpServer.listen(PORT, HOST, () => {
+  console.error(`[mnemon-mcp http] v${version} listening on ${HOST}:${PORT}${AUTH_TOKEN ? " (auth enabled)" : " (no auth — set MNEMON_AUTH_TOKEN for production)"}`);
   console.error(`[mnemon-mcp http] MCP endpoint: POST http://localhost:${PORT}/mcp`);
   console.error(`[mnemon-mcp http] Health check: GET http://localhost:${PORT}/health`);
 });
