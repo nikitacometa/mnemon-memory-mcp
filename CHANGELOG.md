@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `from-frontmatter` entity_name resolution — per-entity KB files declare `entity:` in frontmatter
+
+## [1.3.0] - 2026-03-18
+
+### Added
+- `has_more` pagination flag in `memory_search` response
+- Stem-aware snippet centering — snippets anchor on the stemmed match, not the raw substring
+- Adaptive FTS weighting in hybrid RRF — 1.5× FTS weight when the FTS signal is strong
+- `embedding_model` exposed in `memory_inspect` output (raw embedding BLOB removed from API surface)
+- Migration v7: drop legacy `embedding` column; idempotent migration guards (`safeAddColumn`/`safeDropColumn`)
+- Warning log when a `source_file` supersede matches multiple records
+
+### Changed
+- **Breaking:** `total_found` renamed to `returned_count` in `memory_search` response
+
+### Fixed
+- Export date filters wrap column in `date()` — fixes ISO datetime vs date-only comparison
+- Search log records the resolved search mode instead of the requested one
+- Config loader wraps user-supplied regex patterns in try/catch instead of crashing on invalid input
+- `sqlite-vec` loaded state bound to the db instance instead of a module-level singleton
+
 ## [1.2.0] - 2026-03-18
 
 ### Added
@@ -82,8 +104,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 182 tests (unit + integration + validation)
 - CI pipeline with build, test, and smoke tests
 
-[Unreleased]: https://github.com/nikitacometa/mnemon-mcp/compare/v1.2.0...HEAD
-[1.2.0]: https://github.com/nikitacometa/mnemon-mcp/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/nikitacometa/mnemon-mcp/compare/v1.0.1...v1.1.0
-[1.0.1]: https://github.com/nikitacometa/mnemon-mcp/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/nikitacometa/mnemon-mcp/releases/tag/v1.0.0
+[Unreleased]: https://github.com/nikitacometa/mnemon-memory-mcp/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/nikitacometa/mnemon-memory-mcp/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/nikitacometa/mnemon-memory-mcp/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/nikitacometa/mnemon-memory-mcp/compare/v1.0.1...v1.1.0
+[1.0.1]: https://github.com/nikitacometa/mnemon-memory-mcp/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/nikitacometa/mnemon-memory-mcp/releases/tag/v1.0.0
