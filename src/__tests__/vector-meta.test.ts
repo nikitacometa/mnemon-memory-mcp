@@ -154,6 +154,63 @@ describe.skipIf(!sqliteVecAvailable)("vector index metadata", () => {
     ).rejects.toThrow(/embedding-model mismatch.*:4.*:3/i);
   });
 
+  it("keeps a legacy index usable when its row tags match the current model", async () => {
+    // Simulates upgrading a pre-v8 database: vectors exist, metadata does not.
+    // Provenance must come from the rows, not from whatever is configured now.
+    const embedder = createStubEmbedder("model-a");
+    createVecTable(db, embedder.dimensions, embedder);
+    const memory = memoryAdd(db, { content: "legacy embedded row", layer: "semantic" });
+    upsertVec(db, memory.id, new Float32Array([1, 0, 0, 0]), {
+      provider: embedder.provider,
+      model: embedder.model,
+      dimensions: embedder.dimensions,
+    });
+    db.prepare(`DELETE FROM vector_index_meta WHERE id = 1`).run();
+
+    createVecTable(db, embedder.dimensions, embedder);
+
+    expect(isVecLoaded()).toBe(true);
+    const result = await memorySearch(db, { query: "legacy", mode: "vector", limit: 1 }, embedder);
+    expect(result.memories.map((item) => item.id)).toEqual([memory.id]);
+  });
+
+  it("disables a legacy index whose row tags name a different model", async () => {
+    const original = createStubEmbedder("model-a");
+    createVecTable(db, original.dimensions, original);
+    const memory = memoryAdd(db, { content: "embedded by the old model", layer: "semantic" });
+    upsertVec(db, memory.id, new Float32Array([1, 0, 0, 0]), {
+      provider: original.provider,
+      model: original.model,
+      dimensions: original.dimensions,
+    });
+    db.prepare(`DELETE FROM vector_index_meta WHERE id = 1`).run();
+    const changed = createStubEmbedder("model-b");
+
+    createVecTable(db, changed.dimensions, changed);
+
+    expect(isVecLoaded()).toBe(false);
+    await expect(
+      memorySearch(db, { query: "old", mode: "vector", limit: 1 }, changed)
+    ).rejects.toThrow(/embedding-model mismatch.*model-a.*model-b/i);
+  });
+
+  it("stamps provenance on the row in the same write as the vector", () => {
+    const embedder = createStubEmbedder("model-a");
+    createVecTable(db, embedder.dimensions, embedder);
+    const memory = memoryAdd(db, { content: "tagged on write", layer: "semantic" });
+
+    upsertVec(db, memory.id, new Float32Array([1, 0, 0, 0]), {
+      provider: embedder.provider,
+      model: embedder.model,
+      dimensions: embedder.dimensions,
+    });
+
+    const row = db.prepare<[string], { embedding_model: string | null }>(
+      `SELECT embedding_model FROM memories WHERE id = ?`
+    ).get(memory.id);
+    expect(row?.embedding_model).toBe("test:model-a:4");
+  });
+
   it("adopts a new embedding space when the index holds no vectors", async () => {
     // Nothing to corrupt in an empty index — switching models before the
     // first embedding is a free choice, not a recovery scenario

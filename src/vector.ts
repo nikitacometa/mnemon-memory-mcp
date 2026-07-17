@@ -52,6 +52,31 @@ export function getVecUnavailableReason(): string | null {
   return vecUnavailableReason;
 }
 
+/** Provenance tag recorded per memory by the embedding paths. */
+function modelTag(meta: { provider: string; model: string; dimensions: number }): string {
+  return `${meta.provider}:${meta.model}:${meta.dimensions}`;
+}
+
+/**
+ * Model tags on already-embedded rows that disagree with `expected`.
+ * Rows with no tag are inconclusive, not foreign — they predate tagging, and
+ * refusing on them would break every legacy install that never switched models.
+ */
+function legacyForeignModels(db: Database.Database, expected: string): string[] {
+  try {
+    const rows = db.prepare<[], { model: string | null }>(
+      `SELECT DISTINCT m.embedding_model AS model
+       FROM memories_vec v
+       JOIN memories m ON m.id = v.memory_id`
+    ).all();
+    return rows
+      .map((r) => r.model)
+      .filter((model): model is string => model !== null && model !== expected);
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Create the vec0 virtual table for memory embeddings.
  * Must be called after loadSqliteVec() succeeds.
@@ -81,6 +106,23 @@ export function createVecTable(
       stored.model !== current.model ||
       stored.dimensions !== current.dimensions
     );
+
+  // Databases predating this metadata table can already hold vectors. Trusting
+  // the current config as their provenance would bless a model switch made
+  // during the upgrade — so recover provenance from the per-row model tags
+  // instead, and refuse only when they actually disagree.
+  if (!stored && vecCount(db) > 0) {
+    const foreign = legacyForeignModels(db, modelTag(current));
+    if (foreign.length > 0) {
+      vecUnavailableReason =
+        `embedding-model mismatch: index built with ${foreign.join(", ")}, ` +
+        `current=${modelTag(current)}. ` +
+        "Re-run `npm run embed:backfill --force` to rebuild the index; FTS remains available.";
+      console.error(`[mnemon-mcp] ${vecUnavailableReason}`);
+      vecDb = null;
+      return;
+    }
+  }
 
   // Only a POPULATED index is at risk: mixing vectors from two embedding
   // spaces makes cosine distance meaningless with no error to show for it.
@@ -124,16 +166,32 @@ export function createVecTable(
   }
 }
 
-/** Insert or replace a vector for a memory. */
+/**
+ * Insert or replace a vector for a memory.
+ *
+ * Pass `meta` on every production path: it stamps the row's provenance in the
+ * same transaction as the vector, so `memories.embedding_model` can never
+ * disagree with what is actually in the index. Tests that hand-craft vectors
+ * may omit it.
+ */
 export function upsertVec(
   db: Database.Database,
   memoryId: string,
-  embedding: Float32Array
+  embedding: Float32Array,
+  meta?: EmbedderMetadata & { dimensions: number }
 ): void {
   if (!vecDb) return;
-  db.prepare(
-    "INSERT OR REPLACE INTO memories_vec(memory_id, content_embedding) VALUES (?, ?)"
-  ).run(memoryId, embedding);
+  db.transaction(() => {
+    db.prepare(
+      "INSERT OR REPLACE INTO memories_vec(memory_id, content_embedding) VALUES (?, ?)"
+    ).run(memoryId, embedding);
+    if (meta) {
+      db.prepare("UPDATE memories SET embedding_model = ? WHERE id = ?").run(
+        modelTag(meta),
+        memoryId
+      );
+    }
+  })();
 }
 
 /** Delete a vector when a memory is deleted. */

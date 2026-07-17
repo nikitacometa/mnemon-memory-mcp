@@ -174,7 +174,7 @@ export function createMcpServer(db: Database.Database, embedder?: Embedder | nul
                 ? `${input.title}\n\n${input.content}`
                 : input.content;
               const embedding = await embedder.embed(textToEmbed);
-              upsertVec(db, result.id, embedding);
+              upsertVec(db, result.id, embedding, embedder);
             } catch {
               // Embedding is best-effort — don't fail the add
             }
@@ -199,7 +199,7 @@ export function createMcpServer(db: Database.Database, embedder?: Embedder | nul
               if (row) {
                 const text = row.title ? `${row.title}\n\n${row.content}` : row.content;
                 const embedding = await embedder.embed(text);
-                upsertVec(db, activeId, embedding);
+                upsertVec(db, activeId, embedding, embedder);
               }
               // Remove stale vector for superseded entry
               if (result.new_id) {
