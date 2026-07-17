@@ -88,6 +88,16 @@ describe("MemoryAddSchema", () => {
     const result = MemoryAddSchema.parse({ content: "valid", layer: "semantic", confidence: 1.0 });
     expect(result.confidence).toBe(1.0);
   });
+
+  it.each([
+    ["2025-02-31", false],
+    ["2025-04-31", false],
+    ["2024-02-29", true],
+    ["2025-02-29", false],
+  ] as const)("validates calendar date %s", (event_at, expected) => {
+    const result = MemoryAddSchema.safeParse({ content: "valid", layer: "episodic", event_at });
+    expect(result.success).toBe(expected);
+  });
 });
 
 // ---------------------------------------------------------------------------

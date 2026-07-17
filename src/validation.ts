@@ -13,11 +13,23 @@ const EntityType = z.enum(["user", "project", "person", "concept", "file", "rule
 const SearchMode = z.enum(["fts", "exact", "vector", "hybrid"]);
 const ExportFormat = z.enum(["json", "markdown", "claude-md"]);
 
+function hasValidCalendarDate(value: string): boolean {
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
 const isoDatePrefix = z.string().regex(
   /^\d{4}-\d{2}-\d{2}/,
   "Must be an ISO 8601 date (YYYY-MM-DD...)"
 ).refine(
-  (v) => !Number.isNaN(Date.parse(v.length === 10 ? `${v}T00:00:00Z` : v)),
+  (v) => hasValidCalendarDate(v)
+    && !Number.isNaN(Date.parse(v.length === 10 ? `${v}T00:00:00Z` : v)),
   "Must be a valid date"
 );
 

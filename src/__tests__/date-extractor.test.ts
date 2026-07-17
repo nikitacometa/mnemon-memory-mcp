@@ -72,10 +72,13 @@ describe("extractDatesFromQuery", () => {
     expect(result.cleanedQuery).toBe("Что было в дневнике");
   });
 
-  it("extracts exact date: leap year 29 февраля 2024", () => {
-    const result = extractDatesFromQuery("29 февраля 2024 года");
-    expect(result.date_from).toBe("2024-02-29");
-    expect(result.date_to).toBe("2024-02-29");
+  it.each([
+    ["31 февраля 2025 года", null, null],
+    ["29 февраля 2024 года", "2024-02-29", "2024-02-29"],
+  ] as const)("validates exact calendar date: %s", (query, expectedFrom, expectedTo) => {
+    const result = extractDatesFromQuery(query);
+    expect(result.date_from).toBe(expectedFrom);
+    expect(result.date_to).toBe(expectedTo);
   });
 
   it("extracts exact date with single-digit day", () => {

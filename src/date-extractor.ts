@@ -70,6 +70,14 @@ function toIso(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/** Return true if the parts round-trip to the same UTC calendar date. */
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
 /**
  * Build regex source string for matching any month name.
  * Sorted by length descending to ensure longer forms match first.
@@ -99,6 +107,7 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
   const stripRanges: Array<[number, number]> = [];
 
   let matched = false;
+  let exactDateFound = false;
   let m: RegExpExecArray | null;
 
   // Pattern 1: Exact date — "3 марта 2026" or "3 марта 2026 года"
@@ -108,10 +117,11 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
   );
   exactPattern.lastIndex = 0;
   while ((m = exactPattern.exec(norm)) !== null) {
+    exactDateFound = true;
     const day = parseInt(m[1]!, 10);
     const monthNum = MONTH_MAP[m[2]!];
     const year = parseInt(m[3]!, 10);
-    if (monthNum && day >= 1 && day <= 31 && year >= 1900 && year <= 2099) {
+    if (monthNum && year >= 1900 && year <= 2099 && isValidCalendarDate(year, monthNum, day)) {
       date_from = toIso(year, monthNum, day);
       date_to = toIso(year, monthNum, day);
       stripRanges.push([m.index, m.index + m[0].length]);
@@ -120,7 +130,7 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
     }
   }
 
-  if (!matched) {
+  if (!matched && !exactDateFound) {
     // Pattern 2: Month range — "феврале–марте 2025" or "феврале-марте 2025"
     // Dash variants: hyphen (-), en-dash (–, \u2013), em-dash (—, \u2014), figure dash (\u2012)
     const rangePattern = new RegExp(
@@ -144,7 +154,7 @@ export function extractDatesFromQuery(query: string): ExtractedDates {
     }
   }
 
-  if (!matched) {
+  if (!matched && !exactDateFound) {
     // Pattern 3: Single month + year — "в мае 2025"
     const singlePattern = new RegExp(
       `(${MONTH_PATTERN})\\s+(\\d{4})(?:\\s+года?(?:у)?)?`,
