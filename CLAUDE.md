@@ -59,7 +59,6 @@ src/
     memory-export.ts    Export to json/markdown/claude-md with layer/scope/date filters
     memory-health.ts    Diagnostic report + optional expired entry cleanup
     session.ts          Session lifecycle: start, end, list
-    style-extract.ts    [STUB] Writing style analysis
   import/
     cli.ts              CLI entry for KB import
     kb-config.ts        Import routing rules (which files → which layer)
@@ -102,7 +101,6 @@ src/
 | memory_session_start | Working | Start agent session, returns session ID for grouping memories |
 | memory_session_end | Working | End session with optional summary, returns duration + memory count |
 | memory_session_list | Working | List sessions with filters (client, project, active_only) |
-| style_extract | Stub | Throws "not implemented" |
 
 ### MCP Resources
 
@@ -174,7 +172,7 @@ When `memory_update(supersede=true)`:
 ## Conventions
 
 - Commit format: `verb: description` (follows global CLAUDE.md)
-- Push to `origin` (https://github.com/nikitacometa/mnemon-mcp.git)
+- Push to `origin` (https://github.com/nikitacometa/mnemon-memory-mcp.git)
 
 ## Architecture Decisions
 
