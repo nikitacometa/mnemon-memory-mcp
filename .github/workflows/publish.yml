@@ -37,6 +37,18 @@ jobs:
           print(f'OK: {len(tools)} tools')
           "
 
+      - name: Check if version already published
+        id: check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "mnemon-mcp@$VERSION" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "mnemon-mcp@$VERSION already on npm — skipping publish"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - run: npm publish --provenance --access public
+        if: steps.check.outputs.published == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
